@@ -5,23 +5,23 @@ np.random.seed(42)
 
 # Problem examples: (X: features, y: labels) 
 # XOR problem 
-X_XOR = np.array([[0,0], [0,1], [1,0], [1,1]])
-Y_XOR = np.array([[0], [1], [1], [0]])
+x_XOR = np.array([[0,0], [0,1], [1,0], [1,1]])
+y_XOR = np.array([[0], [1], [1], [0]])
 
 # AND problem
-X_AND = np.array([[0,0], [0,1], [1,0], [1,1]])
-Y_AND = np.array([[0], [0], [0], [1]])
+x_AND = np.array([[0,0], [0,1], [1,0], [1,1]])
+y_AND = np.array([[0], [0], [0], [1]])
 
 # Function approximation problem
 # Define input range
-X = np.linspace(-np.pi, np.pi, 100).reshape(-1, 1)  # 100 points between -π and π
+x = np.linspace(-np.pi, np.pi, 100).reshape(-1, 1)  # 100 points between -π and π
 # Define output function
-Y = 0.5 * np.cos(2 * X)
+y = 0.5 * np.cos(2 * x)
 
 # Neural network with arbitrary layer sizes
 # When specifying layers, it should include the ouput layer always
-class network:
-    def __init__(self, X, Y, layers=None, weights=None, biases=None):
+class Network:
+    def __init__(self, X, Y, layers=None, genome=None):
         self.X = X # Features
         self.Y = Y # Labels
         
@@ -30,29 +30,55 @@ class network:
             layers = [Y.shape[1]] # One layer matching the number of outputs (number of outputs = Y.shape[1])
         self.layers = [X.shape[1]] + layers  # List containing the input layers and additional layers (X.shape[1] = number of input features)
         
-        if weights is None:
-            self.weights = [] # List of weight matrices
-            for i in range(len(self.layers) - 1): #Leave out the input layer
-                self.weights.append(np.random.randn(self.layers[i], self.layers[i+1])) # Weight matrix for each layer: np.random.randn(rows, cols)
+        # Genome is a vector containing all genome information (weights then biases
+        if genome is None:
+            # initialize random values for weights and 0 for the biases in the genome
+            self.genome = self._initialize_genome()
         else:
-            self.weights = weights
-            
-        if biases is None:
-            self.biases = []  # List of bias vectors
-            for i in range(len(self.layers) - 1): #Leave out the input layer
-                self.biases.append(np.zeros(self.layers[i+1])) # Bias vector for each layer: np.random.randn(length)
-        else:
-            self.biases = biases
+            self.genome = genome.copy()
 
-        # Vector containing all genome information (weights then biases)
-        self.genome = np.concatenate(
-            [w.flatten() for w in self.weights] + [b.flatten() for b in self.biases]
-        )
+    def _initialize_genome(self):
+        genome_parts = []
+        
+        # Weights
+        for i in range(len(self.layers) - 1):
+            size = self.layers[i] * self.layers[i+1]
+            genome_parts.append(np.random.randn(size))
+        
+        # Biases
+        for i in range(len(self.layers) - 1):
+            size = self.layers[i+1]
+            genome_parts.append(np.zeros(size))
+        
+        return np.concatenate(genome_parts)
 
+    # Decodes a flat genome array into weights and biases matrices/vectors
+    def decode_genome(self):
+        # Keeps track of where we are in the flat genome
+        idx = 0
 
+        weights = []
+        # Decode weights
+        for i in range(len(self.layers) - 1):
+            rows, cols = self.layers[i], self.layers[i + 1]
+            size = rows * cols
+            weight_matrix = self.genome[idx:idx + size].reshape(rows, cols)
+            weights.append(weight_matrix)
+            idx += size
+        
+        biases = []
+        # Decode biases
+        for i in range(len(self.layers) - 1):
+            size = self.layers[i + 1]
+            bias_vector = self.genome[idx:idx + size]
+            biases.append(bias_vector)
+            idx += size
+        
+        return weights, biases
+    
     def print_genome(self):
         print(self.genome)
-    
+
     def activation(self, input):
         return  1 / (1 + np.exp(-input))
 
@@ -71,9 +97,10 @@ class network:
     (xA + b)T = (x')T -> (xA)T + bT=x'T -> ATxT + bT=x'T)
     '''
     def output(self):
+        weights, biases = self.decode_genome()
         current_input = self.X
-        for i in range(len(self.weights)):
-            current_input = self.activation(np.dot(current_input, self.weights[i]) + self.biases[i]) # Computes the layer operations in a loop until it reaches the output layer
+        for i in range(len(weights)):
+            current_input = self.activation(np.dot(current_input, weights[i]) + biases[i]) # Computes the layer operations in a loop until it reaches the output layer
         return current_input # Returns a matrix containing the outputs of all possible entries (all our data) (each row corresponds to a data point)
     
     # Function to determine how good the network is
@@ -85,22 +112,15 @@ class network:
     # Adds perturbations/noise to the weights and biases
     # rate tells us how strong the noise is
     def mutate(self, rate=0.1, prob=0.1):
-        for i in range(len(self.weights)):
-            noise_w = np.random.randn(*self.weights[i].shape) * rate
-            noise_b = np.random.randn(*self.biases[i].shape) * rate
-
-            # Mutation masks (boolean arrays)
-            mask_w = np.random.rand(*self.weights[i].shape) < prob # This returns a boolean matrix
-            mask_b = np.random.rand(*self.biases[i].shape) < prob
-
-            # Apply the noise according to the ask ~0.1 of the weights are affected
-            self.weights[i] += noise_w * mask_w
-            self.biases[i] += noise_b * mask_b
+        noise = np.random.randn(self.genome.shape[0]) * rate
+        mask = np.random.rand(self.genome.shape[0]) < prob
+        
+        self.genome += noise * mask
     
     # Each individual in the population is a network with random weights and bias:
     @staticmethod
     def initialize_population(size, X, Y, layers=None):
-        return [network(X, Y, layers) for _ in range(size)]
+        return [Network(X, Y, layers) for _ in range(size)]
 
     # We choose 2 parents from a cluster of k candidates chosen at random (we choose the 2 with best fitness in this cluster)
     @staticmethod
@@ -121,137 +141,53 @@ class network:
     # Simply average all weight matrices and bias vectors of both parents
     @staticmethod
     def crossover_average(parent1, parent2):
-        child_weights = []
-        child_biases = []
+        child_genome = (parent1.genome + parent2.genome) / 2
         
-        for i in range(len(parent1.weights)):
-            child_weights.append((parent1.weights[i] + parent2.weights[i]) / 2)
-            child_biases.append((parent1.biases[i] + parent2.biases[i]) / 2)
-        
-        return network(parent1.X, parent1.Y, parent1.layers[1:], weights=child_weights, biases=child_biases)
+        return Network(parent1.X, parent1.Y, layers=parent1.layers[1:], genome=child_genome)
     
     # Chooses randomly a point in the list of all parameters of the child, parameters before that point come from parent1, after that point come from parent2
+    # Can choose the amount of points to split the genes from both parents
     @staticmethod
-    def crossover_single_point(parent1, parent2):
-        child_weights = []
-        child_biases = []
+    def crossover_npoints(parent1, parent2, n_points=1):
+        genome_length = len(parent1.genome)
         
-        # Calculate total number of parameters
-        total_params = sum(w.size + b.size for w, b in zip(parent1.weights, parent1.biases))
-        crossover_point = np.random.randint(1, total_params)
-        
-        current_param = 0
-        for i in range(len(parent1.weights)):
-            weight_size = parent1.weights[i].size
-            bias_size = parent1.biases[i].size
+        if n_points == 1:
+            # Single-point crossover
+            crossover_point = np.random.randint(1, genome_length)
+            child_genome = np.concatenate([
+                parent1.genome[:crossover_point],
+                parent2.genome[crossover_point:]
+            ])
+        else:
+            # Multi-point crossover
+            crossover_points = sorted(np.random.choice(
+                range(1, genome_length), 
+                size=min(n_points, genome_length - 1), 
+                replace=False
+            ))
+            crossover_points = [0] + crossover_points + [genome_length]
             
-            # Handle weights
-            if current_param + weight_size <= crossover_point:
-                # Take all from parent1
-                child_weights.append(parent1.weights[i].copy())
-            elif current_param >= crossover_point:
-                # Take all from parent2
-                child_weights.append(parent2.weights[i].copy())
-            else:
-                # Split within this weight matrix
-                split_point = crossover_point - current_param
-                flat_w1 = parent1.weights[i].flatten()
-                flat_w2 = parent2.weights[i].flatten()
-                child_flat = np.concatenate([flat_w1[:split_point], flat_w2[split_point:]])
-                child_weights.append(child_flat.reshape(parent1.weights[i].shape))
-            
-            current_param += weight_size
-            
-            # Handle biases
-            if current_param + bias_size <= crossover_point:
-                child_biases.append(parent1.biases[i].copy())
-            elif current_param >= crossover_point:
-                child_biases.append(parent2.biases[i].copy())
-            else:
-                split_point = crossover_point - current_param
-                child_bias = np.concatenate([parent1.biases[i][:split_point], 
-                                           parent2.biases[i][split_point:]])
-                child_biases.append(child_bias)
-            
-            current_param += bias_size
+            # Create child by alternating between parents
+            child_genome = np.zeros_like(parent1.genome)
+            for i in range(len(crossover_points) - 1):
+                start, end = crossover_points[i], crossover_points[i + 1]
+                if i % 2 == 0:
+                    child_genome[start:end] = parent1.genome[start:end]
+                else:
+                    child_genome[start:end] = parent2.genome[start:end]
         
-        return network(parent1.X, parent1.Y, parent1.layers[1:], weights=child_weights, biases=child_biases)
-    
-    @staticmethod
-    def crossover_multi_point(parent1, parent2, n_points=2):
-        child_weights = []
-        child_biases = []
-        
-        # Calculate total number of parameters
-        total_params = sum(w.size + b.size for w, b in zip(parent1.weights, parent1.biases))
-        
-        # Generate sorted crossover points
-        crossover_points = sorted(np.random.choice(range(1, total_params), 
-                                                 size=min(n_points, total_params-1), 
-                                                 replace=False))
-        crossover_points = [0] + crossover_points + [total_params]
-        
-        # Flatten all parameters
-        flat_p1 = np.concatenate([w.flatten() for w in parent1.weights] + 
-                                [b.flatten() for b in parent1.biases])
-        flat_p2 = np.concatenate([w.flatten() for w in parent2.weights] + 
-                                [b.flatten() for b in parent2.biases])
-        
-        # Create child by alternating between parents
-        child_flat = np.zeros_like(flat_p1)
-        for i in range(len(crossover_points) - 1):
-            start, end = crossover_points[i], crossover_points[i + 1]
-            if i % 2 == 0:
-                child_flat[start:end] = flat_p1[start:end]
-            else:
-                child_flat[start:end] = flat_p2[start:end]
-        
-        # Reconstruct weights and biases
-        current_idx = 0
-        for i in range(len(parent1.weights)):
-            weight_size = parent1.weights[i].size
-            bias_size = parent1.biases[i].size
-            
-            child_weights.append(child_flat[current_idx:current_idx + weight_size]
-                               .reshape(parent1.weights[i].shape))
-            current_idx += weight_size
-            
-            child_biases.append(child_flat[current_idx:current_idx + bias_size])
-            current_idx += bias_size
-        
-        return network(parent1.X, parent1.Y, parent1.layers[1:], weights=child_weights, biases=child_biases)
+        return Network(parent1.X, parent1.Y, layers=parent1.layers[1:], genome=child_genome)
     
     # Each parameter chosen randomly from either parent, prob is probability of choosing a parameter from parent1
     @staticmethod
     def crossover_uniform(parent1, parent2, prob=0.5):
-        child_weights = []
-        child_biases = []
+        # Create uniform crossover mask
+        mask = np.random.random(parent1.genome.shape) < prob
         
-        for i in range(len(parent1.weights)):
-            # Uniform crossover for weights
-            mask = np.random.random(parent1.weights[i].shape) < prob
-            child_weight = np.where(mask, parent1.weights[i], parent2.weights[i]) # If mask == True, use parent1, if False use parent2
-            child_weights.append(child_weight)
-            
-            # Uniform crossover for biases
-            mask = np.random.random(parent1.biases[i].shape) < prob
-            child_bias = np.where(mask, parent1.biases[i], parent2.biases[i])
-            child_biases.append(child_bias)
+        # If mask == True, use parent1; if False, use parent2
+        child_genome = np.where(mask, parent1.genome, parent2.genome)
         
-        return network(parent1.X, parent1.Y, parent1.layers[1:], weights=child_weights, biases=child_biases)
-    
-    @staticmethod
-    def crossover(parent1, parent2, method='average', **kwargs):
-        if method == 'average':
-            return network.crossover_average(parent1, parent2)
-        elif method == 'single_point':
-            return network.crossover_single_point(parent1, parent2)
-        elif method == 'multi_point':
-            return network.crossover_multi_point(parent1, parent2, kwargs.get('n_points', 2))
-        elif method == 'uniform':
-            return network.crossover_uniform(parent1, parent2, kwargs.get('prob', 0.5))
-        else:
-            raise ValueError(f"Unknown crossover method: {method}")
+        return Network(parent1.X, parent1.Y, layers=parent1.layers[1:], genome=child_genome)
     
     # stagnation_count is the number of generations without improvement
     @staticmethod
@@ -269,93 +205,105 @@ class network:
         return np.clip(rate, min_rate, max_rate)
     
     @staticmethod
-    def evolution(X, Y, layers=None, generations=100, pop_size=20, k=3, mutation_rate=0.1, elitism_rate=0.05, crossover_method='average',
+    def evolution(X, Y, layers=None, generations=100, pop_size=20, k=3, mutation_rate=0.1, 
+                  mutation_prob=0.1, elitism_rate=0.05, crossover_method='average',
                   crossover_kwargs=None, adaptive_mutation=True, early_stopping=None):
-
+        
         if crossover_kwargs is None:
             crossover_kwargs = {}
-            
-        # Initialize population
-        population = network.initialize_population(pop_size, X, Y, layers)
         
-        # Track fitness history for adaptive mutation
+        population = Network.initialize_population(pop_size, X, Y, layers)
+        
         prev_best_fitness = float('inf')
         stagnation_count = 0
         current_mutation_rate = mutation_rate
         
         for gen in range(generations):
-            # Sort population by fitness (lower is better)
             population.sort(key=lambda net: net.fitness())
             
             current_best_fitness = population[0].fitness()
             fitness_improvement = prev_best_fitness - current_best_fitness
             
-            # Update adaptive mutation rate
             if adaptive_mutation:
                 if fitness_improvement <= 1e-6:
                     stagnation_count += 1
                 else:
                     stagnation_count = 0
                 
-                current_mutation_rate = network.adaptive_mutation_rate(
+                current_mutation_rate = Network.adaptive_mutation_rate(
                     mutation_rate, fitness_improvement, stagnation_count
                 )
             
-            # Determine number of elites (at least 1)
             elitism = max(1, int(elitism_rate * pop_size))
-            
-            # Copy elites into the new population
             new_population = population[:elitism]
             
-            # Fill the rest with offspring
             while len(new_population) < pop_size:
-                p1, p2 = network.select_parents(population, k)
-                child = network.crossover(p1, p2, method=crossover_method, **crossover_kwargs)
-                child.mutate(rate=current_mutation_rate)
+                p1, p2 = Network.select_parents(population, k)
+                
+                if crossover_method == 'average':
+                    child = Network.crossover_average(p1, p2)
+                elif crossover_method == 'point':
+                    n_points = crossover_kwargs.get('n_points', 1)
+                    child = Network.crossover_npoints(p1, p2, n_points=n_points)
+                elif crossover_method == 'uniform':
+                    prob = crossover_kwargs.get('prob', 0.5)
+                    child = Network.crossover_uniform(p1, p2, prob=prob)
+                else:
+                    raise ValueError(f"Unknown crossover method: {crossover_method}")
+                
+                child.mutate(rate=current_mutation_rate, prob=mutation_prob)
                 new_population.append(child)
             
             population = new_population
-            
-            # Track best fitness
             best_net = population[0]
             best_fitness = best_net.fitness()
             
-            print(f"Generation {gen+1}, best fitness: {best_fitness}, "
-                      f"mutation rate: {current_mutation_rate}, "
-                      f"stagnation: {stagnation_count}")
+            print(f"Generation {gen+1}, best fitness: {best_fitness:.6f}, "
+                  f"mutation rate: {current_mutation_rate:.4f}, "
+                  f"stagnation: {stagnation_count}")
             
             prev_best_fitness = current_best_fitness
             
             if best_fitness < 1e-3:
+                print("Converged!")
                 break
             if early_stopping is not None and stagnation_count >= early_stopping:
+                print(f"Early stopping at generation {gen+1}")
                 break
         
         return population[0]
     
+    # Calculate the distance between two networks based on their genomes
     @staticmethod
-    def distance():
-        pass
+    def distance(net1, net2, metric='euclidean'):
+        if len(net1.genome) != len(net2.genome):
+            raise ValueError("Networks must have the same architecture to compute distance")
+        
+        genome_diff = net1.genome - net2.genome
+        
+        if metric == 'euclidean':
+            # Euclidean distance: sqrt(sum of squared differences)
+            return np.sqrt(np.sum(genome_diff ** 2))
+        elif metric == 'manhattan':
+            # Manhattan distance: sum of absolute differences
+            return np.sum(np.abs(genome_diff))
+        elif metric == 'chebyshev':
+            # Chebyshev distance: max absolute difference
+            return np.max(np.abs(genome_diff))
+        else:
+            raise ValueError(f"Unknown metric: {metric}")
 
-net1 = network(X_XOR, Y_XOR, layers=[2, 2, 1])
-net1.print_genome()
 
-'''
-best_net_avg = network.evolution(X, Y, layers=[2, 2, 1], generations=1000, pop_size=1000, k=10, mutation_rate=0.15, elitism_rate=0.01, 
+best_net_avg = Network.evolution(x, y, layers=[2, 2, 1], generations=1000, pop_size=1000, k=10, mutation_rate=0.15, elitism_rate=0.01, 
                                 crossover_method='average', adaptive_mutation=True)
 
-best_net_single = network.evolution(X, Y, layers=[2, 2, 1], generations=1000, pop_size=1000, k=10, mutation_rate=0.15, elitism_rate=0.01, 
-                                   crossover_method='single_point', adaptive_mutation=True)
+best_net_multi = Network.evolution(x, y, layers=[2, 2, 1], generations=1000, pop_size=1000, k=10, mutation_rate=0.15, elitism_rate=0.01, 
+                                  crossover_method='point', crossover_kwargs={'n_points': 1}, adaptive_mutation=True)
 
-best_net_multi = network.evolution(X, Y, layers=[2, 2, 1], generations=1000, pop_size=1000, k=10, mutation_rate=0.15, elitism_rate=0.01, 
-                                  crossover_method='multi_point', crossover_kwargs={'n_points': 3}, adaptive_mutation=True)
-
-best_net_uniform = network.evolution(X, Y, layers=[2, 2, 1], generations=1000, pop_size=1000, k=10, mutation_rate=0.15, elitism_rate=0.01, 
+best_net_uniform = Network.evolution(x, y, layers=[2, 2, 1], generations=1000, pop_size=1000, k=10, mutation_rate=0.15, elitism_rate=0.01, 
                                     crossover_method='uniform', crossover_kwargs={'prob': 0.6}, adaptive_mutation=True)
 
 print(f"\nFinal Results:")
 print(f"Average crossover fitness: {best_net_avg.fitness()}")
-print(f"Single-point crossover fitness: {best_net_single.fitness()}")
 print(f"Multi-point crossover fitness: {best_net_multi.fitness()}")
 print(f"Uniform crossover fitness: {best_net_uniform.fitness()}")
-'''
