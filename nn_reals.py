@@ -122,6 +122,7 @@ class Network:
     def initialize_population(size, X, Y, layers=None):
         return [Network(X, Y, layers) for _ in range(size)]
 
+    # Tournament selection
     # We choose 2 parents from a cluster of k candidates chosen at random (we choose the 2 with best fitness in this cluster)
     @staticmethod
     def select_parents(pop, k=3):
@@ -220,6 +221,11 @@ class Network:
         
         for gen in range(generations):
             population.sort(key=lambda net: net.fitness())
+
+            # Calculate diversity each epoch
+            diversity_stats = Network.population_diversity(population, n_samples=100)
+            print(f"Mean diversity: {diversity_stats['mean_distance']:.4f}")
+            print(f"Std deviation: {diversity_stats['std_distance']:.4f}")
             
             current_best_fitness = population[0].fitness()
             fitness_improvement = prev_best_fitness - current_best_fitness
@@ -281,29 +287,62 @@ class Network:
         
         genome_diff = net1.genome - net2.genome
         
-        if metric == 'euclidean':
-            # Euclidean distance: sqrt(sum of squared differences)
+        if metric == 'euclidean': # Euclidean distance: sqrt(sum of squared differences)
             return np.sqrt(np.sum(genome_diff ** 2))
-        elif metric == 'manhattan':
-            # Manhattan distance: sum of absolute differences
+        elif metric == 'manhattan': # Manhattan distance: sum of absolute differences
             return np.sum(np.abs(genome_diff))
-        elif metric == 'chebyshev':
-            # Chebyshev distance: max absolute difference
+        elif metric == 'chebyshev': # Chebyshev distance: max absolute difference
             return np.max(np.abs(genome_diff))
         else:
             raise ValueError(f"Unknown metric: {metric}")
+        
+    # Implement this notion of distance in:
+    # Measuring genetic diversity in the population
+    # Tracking how much networks evolve over generations
+    # Detecting convergence
+    # Analyzing speciation
 
+    # Calculates the average distance between pairs out of n randomly chosen individuals
+    @staticmethod
+    def population_diversity(population, n_samples=50, metric='euclidean'):
+        if len(population) < 2:
+            raise ValueError("Population must have at least 2 networks")
+        
+        # Limit samples to avoid exceeding max possible pairs
+        max_possible_pairs = len(population) * (len(population) - 1) // 2 # All possible pairs
+        n_samples = min(n_samples, max_possible_pairs)
+        
+        distances = []
 
-best_net_avg = Network.evolution(x, y, layers=[2, 2, 1], generations=1000, pop_size=1000, k=10, mutation_rate=0.15, elitism_rate=0.01, 
-                                crossover_method='average', adaptive_mutation=True)
+        # Randomly sample pairs and compute their distances
+        for _ in range(n_samples):
+            # Select two different random networks
+            idx1, idx2 = np.random.choice(len(population), 2, replace=False)
+            net1, net2 = population[idx1], population[idx2]
+            
+            # Compute distance
+            dist = Network.distance(net1, net2, metric=metric)
+            distances.append(dist)
+        
+        distances = np.array(distances)
+        
+        return {
+            'mean_distance': np.mean(distances),
+            'std_distance': np.std(distances),
+            'min_distance': np.min(distances),
+            'max_distance': np.max(distances)
+        }
 
-best_net_multi = Network.evolution(x, y, layers=[2, 2, 1], generations=1000, pop_size=1000, k=10, mutation_rate=0.15, elitism_rate=0.01, 
-                                  crossover_method='point', crossover_kwargs={'n_points': 1}, adaptive_mutation=True)
+# best_net_avg = Network.evolution(x, y, layers=[2, 2, 1], generations=500, pop_size=500, k=5, mutation_rate=0.15, elitism_rate=0.01, 
+#                                crossover_method='average', adaptive_mutation=True)
 
-best_net_uniform = Network.evolution(x, y, layers=[2, 2, 1], generations=1000, pop_size=1000, k=10, mutation_rate=0.15, elitism_rate=0.01, 
-                                    crossover_method='uniform', crossover_kwargs={'prob': 0.6}, adaptive_mutation=True)
+# best_net_multi = Network.evolution(x, y, layers=[2, 2, 1], generations=500, pop_size=500, k=5, mutation_rate=0.15, elitism_rate=0.01, 
+#                                  crossover_method='point', crossover_kwargs={'n_points': 1}, adaptive_mutation=True)
+
+best_net_uniform = Network.evolution(x, y, layers=[2, 1], generations=500, pop_size=500, k=5, mutation_rate=0.1, elitism_rate=0.1, 
+                                    crossover_method='uniform', crossover_kwargs={'prob': 0.5}, adaptive_mutation=True)
 
 print(f"\nFinal Results:")
-print(f"Average crossover fitness: {best_net_avg.fitness()}")
-print(f"Multi-point crossover fitness: {best_net_multi.fitness()}")
+# print(f"Average crossover fitness: {best_net_avg.fitness()}")
+# print(f"Multi-point crossover fitness: {best_net_multi.fitness()}")
 print(f"Uniform crossover fitness: {best_net_uniform.fitness()}")
