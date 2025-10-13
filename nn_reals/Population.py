@@ -65,3 +65,33 @@ class Population:
             'min_distance': np.min(distances),
             'max_distance': np.max(distances)
         }
+    
+    # return fitness list/array of all networks in population
+    def get_fitnesses(self):
+        return np.array([net.fitness() for net in self.pop])
+    
+    # returns the n best networks in the population
+    def get_best_networks(self, n=1):
+        sorted_pop = sorted(self.pop, key=lambda net: net.fitness())
+        if n == 1:
+            return sorted_pop[0]
+        return sorted_pop[:n]
+    
+    # returns a distance matrix
+    def all_pairwise_distances(self, metric='euclidean'):
+        n = self.pop_size
+        distances = np.zeros((n, n))
+        
+        for i in range(n):
+            for j in range(i + 1, n):
+                dist = Population.distance(self.pop[i], self.pop[j], metric=metric)
+                distances[i, j] = dist
+                distances[j, i] = dist
+        
+        return distances
+
+    def __len__(self):
+        return self.pop_size
+    
+    def __getitem__(self, index):
+        return self.pop[index]

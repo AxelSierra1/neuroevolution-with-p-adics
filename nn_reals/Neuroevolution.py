@@ -153,11 +153,11 @@ class Neuroevolution:
             prev_best_fitness = current_best_fitness
             
             # Convergence check
-            if best_fitness < 1e-5:
+            if best_fitness < 1e-4:
                 print("Converged!")
                 break
             if early_stopping is not None and stagnation_count >= early_stopping:
                 print(f"Early stopping at generation {gen+1}")
                 break
-        
+
         return self.population.pop[0]

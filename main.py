@@ -32,11 +32,15 @@ y = 0.5 * np.cos(2 * x)
 # best_net_uniform = Network.evolution(x, y, layers=[2, 1], generations=500, pop_size=500, k=5, mutation_rate=0.1, elitism_rate=0.1, 
 #                                     crossover_method='uniform', crossover_kwargs={'prob': 0.5}, adaptive_mutation=True)
 
-pop = Population(x_XOR, y_XOR, layers=[4, 1], task='classification')
+pop = Population(x_XOR, y_XOR, layers=[4, 1], task='classification', pop_size=10)
 
 evolve = Neuroevolution(pop)
 
-best_net = evolve.evolution(generations=1000)
+best_net = evolve.evolution(generations=100)
 
 print("labels: ", y_XOR)
 print("Predictions: ", best_net.output())
+
+# print("Population size: ", len(pop))
+# print("First individual in population: ", pop[0])
+
