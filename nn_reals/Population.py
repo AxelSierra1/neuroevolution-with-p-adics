@@ -22,9 +22,6 @@ class Population:
     # Analyzing speciation
     @staticmethod
     def distance(net1, net2, metric='euclidean'):
-        if len(net1.genome) != len(net2.genome):
-            raise ValueError("Networks must have the same architecture to compute distance")
-        
         genome_diff = net1.genome - net2.genome
         
         if metric == 'euclidean': # Euclidean distance: sqrt(sum of squared differences)
