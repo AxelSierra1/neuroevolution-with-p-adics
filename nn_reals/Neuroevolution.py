@@ -1,7 +1,6 @@
 import numpy as np
 
 from nn_reals.Network import Network
-from nn_reals.Population import Population
 
 class Neuroevolution:
     def __init__(self, population):
@@ -86,7 +85,7 @@ class Neuroevolution:
         
         return np.clip(rate, min_rate, max_rate)
     
-    def evolution(self, generations=100, k=3, mutation_rate=0.1, mutation_prob=0.1, elitism_rate=0.05, crossover_method='average',
+    def evolution(self, generations=100, k=3, mutation_rate=0.15, mutation_prob=0.15, elitism_rate=0.05, crossover_method='average',
                   crossover_kwargs=None, adaptive_mutation=True, early_stopping=None, task='regression'):
         
         if crossover_kwargs is None:
@@ -159,5 +158,4 @@ class Neuroevolution:
             if early_stopping is not None and stagnation_count >= early_stopping:
                 print(f"Early stopping at generation {gen+1}")
                 break
-
         return self.population.pop[0]

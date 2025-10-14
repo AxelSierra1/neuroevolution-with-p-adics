@@ -15,13 +15,13 @@ class Population:
     def initialize_population(self, X, Y, layers, task, pop_size):
         return [Network(X, Y, layers=layers, task=task) for _ in range(pop_size)]
     
-    # Calculate the distance between two networks based on their genomes
+    # Calculate the distance between two networks based on their genomes (how distinct their strcutures are)
     # Implement this notion of distance in:
     # Tracking how much networks evolve over generations
     # Detecting convergence
     # Analyzing speciation
     @staticmethod
-    def distance(net1, net2, metric='euclidean'):
+    def genetic_distance(net1, net2, metric='euclidean'):
         genome_diff = net1.genome - net2.genome
         
         if metric == 'euclidean': # Euclidean distance: sqrt(sum of squared differences)
@@ -51,7 +51,7 @@ class Population:
             net1, net2 = self.pop[idx1], self.pop[idx2]
             
             # Compute distance
-            dist = Population.distance(net1, net2, metric=metric)
+            dist = Population.genetic_distance(net1, net2, metric=metric)
             distances.append(dist)
         
         distances = np.array(distances)
@@ -81,7 +81,7 @@ class Population:
         
         for i in range(n):
             for j in range(i + 1, n):
-                dist = Population.distance(self.pop[i], self.pop[j], metric=metric)
+                dist = Population.genetic_distance(self.pop[i], self.pop[j], metric=metric)
                 distances[i, j] = dist
                 distances[j, i] = dist
         

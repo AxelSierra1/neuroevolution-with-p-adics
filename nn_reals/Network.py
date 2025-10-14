@@ -110,7 +110,7 @@ class Network:
     
     # Adds perturbations/noise to the weights and biases
     # rate tells us how strong the noise is
-    def mutate(self, rate=0.1, prob=0.1):
+    def mutate(self, rate=0.15, prob=0.15):
         noise = np.random.randn(self.genome.shape[0]) * rate
         mask = np.random.rand(self.genome.shape[0]) < prob
         
