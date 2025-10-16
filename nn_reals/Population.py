@@ -30,8 +30,41 @@ class Population:
             return np.sum(np.abs(genome_diff))
         elif metric == 'chebyshev': # Chebyshev distance: max absolute difference
             return np.max(np.abs(genome_diff))
+        elif metric == 'p-adic': # p-adic distance
+            return Population.p_adic_norm(genome_diff, p=5)
         else:
             raise ValueError(f"Unknown metric: {metric}")
+
+    # Compute p-adic valuation for floats by scaling to integers.
+    @staticmethod
+    def p_adic_valuation(x, p, precision=1000):
+        if x == 0:
+            return float('inf')
+        # Scale float to integer
+        x_scaled = round(abs(x) * precision)
+        
+        if x_scaled == 0:  # Very small values round to zero
+            return float('inf')
+        
+        count = 0
+        while x_scaled % p == 0:
+            x_scaled //= p
+            count += 1
+        return count
+
+    @staticmethod
+    def p_adic_norm(vector, p=2, precision=1000):
+        valuations = [Population.p_adic_valuation(x, p, precision) for x in vector if abs(x) > 1e-10]  # Numerical tolerance
+        
+        if not valuations:  # Zero vector
+            return 0.0
+        min_valuation = min(valuations)
+        return p ** (-min_valuation)
+
+    @staticmethod
+    def p_adic_distance(net1, net2, p=2, precision=1000):
+        genome_diff = net1.genome - net2.genome
+        return Population.p_adic_norm(genome_diff, p, precision)
 
     # Calculates the average distance between pairs out of n randomly chosen individuals
     def population_diversity(self, n_samples=50, metric='euclidean'):

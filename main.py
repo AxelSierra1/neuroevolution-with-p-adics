@@ -5,7 +5,6 @@ import matplotlib.pyplot as plt
 from nn_reals.Network import Network
 from nn_reals.Population import Population
 from nn_reals.Neuroevolution import Neuroevolution
-from nn_reals.TreeVisualization import HierarchicalClusteringTree
 
 np.random.seed(42)
 
@@ -26,40 +25,13 @@ y = 0.5 * np.cos(2 * x ** 2) * x
 
 
 
-pop = Population(x, y, layers=[2, 1], task='regression', pop_size=25)
+pop = Population(x, y, layers=[2, 1], task='regression', pop_size=50)
 evolve = Neuroevolution(pop)
-best_net = evolve.evolution(generations=1000)
+best_net = evolve.evolution(generations=500)
 print("labels: ", y)
 print("Predictions: ", best_net.output())
 # print("Population size: ", len(pop))
 # print("First individual in population: ", pop[0])
-
-
-
-
-# Visualzations =============================================================
-# Example usage with auto-generated thresholds:
-tree = HierarchicalClusteringTree.from_neuroevolution(
-    evolve, 
-    generation=999,
-    metric='euclidean', 
-    auto_thresholds=5
-)
-tree.build_tree()
-tree.verify_clusters()  # Verify that constraints are satisfied
-tree.visualize(save_path='clustering_tree.png')
-
-# Or with manually specified decreasing thresholds:
-# tree = HierarchicalClusteringTree.from_neuroevolution(
-#     evolve, 
-#     generation=999, 
-#     metric='euclidean', 
-#     thresholds=[1.0, 0.2, 0.04, 0.008, 0.0016, 0.00032] # Must be decreasing
-# )
-# tree.build_tree()
-# tree.visualize(save_path='clustering_tree_999_manual.png')
-# tree.verify_clusters()
-# ===========================================================================
 
 
 # Disntaces:
