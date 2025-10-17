@@ -24,7 +24,6 @@ x = np.linspace(-np.pi, np.pi, 100).reshape(-1, 1)  # 100 points between -π and
 y = 0.5 * np.cos(2 * x ** 2) * x
 
 
-
 pop = Population(x, y, layers=[2, 1], task='regression', pop_size=100)
 evolve = Neuroevolution(pop)
 best_net = evolve.evolution(generations=500)

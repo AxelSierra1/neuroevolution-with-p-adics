@@ -91,7 +91,7 @@ class Neuroevolution:
                   crossover_kwargs=None, track_metrics=True, adaptive_mutation=True, early_stopping=None, task='regression'):
         
         if track_metrics:
-            metrics = EvolutionMetrics(save_dir='metrics')
+            metrics = EvolutionMetrics(save_dir='metrics', metrics=['euclidean', 'manhattan', 'chebyshev', 'padic'])
 
         if crossover_kwargs is None:
             crossover_kwargs = {}
@@ -105,12 +105,12 @@ class Neuroevolution:
             self.population.pop.sort(key=lambda net: net.fitness())
 
             if track_metrics:
-                metrics.record_generation(gen, self.population, padic_norm='l2', metric_pairs=['euclidean', 'padic'], p=11, precision=3)
+                metrics.record_generation(gen, self.population, padic_norm='l1', p=11, precision=3)
 
-            # Calculate diversity each epoch
-            diversity_stats = self.population.population_diversity(n_samples=100)
-            print(f"Mean diversity: {diversity_stats['mean_distance']:.4f}")
-            print(f"Std deviation: {diversity_stats['std_distance']:.4f}")
+            # Calculate and display diversity each epoch
+            # diversity_stats = self.population.population_diversity(n_samples=100, metric='euclidean')
+            # print(f"Mean diversity: {diversity_stats['mean_distance']:.4f}")
+            # print(f"Std deviation: {diversity_stats['std_distance']:.4f}")
             
             current_best_fitness = self.population.pop[0].fitness()
             fitness_improvement = prev_best_fitness - current_best_fitness

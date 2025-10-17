@@ -18,7 +18,7 @@ class Population:
     
     # Genetic distance between two networks based on their genomes (p, presicion, and padic_norm are only used for p-adic metric)
     @staticmethod
-    def genetic_distance(net1, net2, metric='euclidean', p=11, precision=3, padic_norm='linf'):
+    def genetic_distance(net1, net2, metric, p=11, precision=3, padic_norm='l1'):
         genome_diff = net1.genome - net2.genome
         
         if metric == 'euclidean':
@@ -92,7 +92,7 @@ class Population:
         return np.sqrt(sum_squares)
 
     # Calculates the average distance between pairs out of n randomly chosen individuals
-    def population_diversity(self, n_samples=50, metric='euclidean'):
+    def population_diversity(self, metric, n_samples=50):
         if self.pop_size < 2:
             raise ValueError("Population must have at least 2 networks")
         
@@ -133,7 +133,7 @@ class Population:
         return sorted_pop[:n]
     
     # returns a distance matrix
-    def all_pairwise_distances(self, metric='euclidean'):
+    def all_pairwise_distances(self, metric):
         n = self.pop_size
         distances = np.zeros((n, n))
         
