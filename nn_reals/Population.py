@@ -3,7 +3,8 @@ import numpy as np
 from nn_reals.Network import Network
 
 class Population:
-    def __init__(self, X, Y, layers=None, task='regression', pop_size=100):
+    '''Class representing a population of neural networks for neuroevolution.'''
+    def __init__(self, X, Y, layers=None, task='regression', pop_size=10):
         self.X = X
         self.Y = Y
         self.layers = layers
@@ -15,29 +16,32 @@ class Population:
     def initialize_population(self, X, Y, layers, task, pop_size):
         return [Network(X, Y, layers=layers, task=task) for _ in range(pop_size)]
     
-    # Calculate the distance between two networks based on their genomes (how distinct their strcutures are)
-    # Implement this notion of distance in:
-    # Tracking how much networks evolve over generations
-    # Detecting convergence
-    # Analyzing speciation
+    # Genetic distance between two networks based on their genomes (p, presicion, and padic_norm are only used for p-adic metric)
     @staticmethod
-    def genetic_distance(net1, net2, metric='euclidean'):
+    def genetic_distance(net1, net2, metric='euclidean', p=11, precision=3, padic_norm='linf'):
         genome_diff = net1.genome - net2.genome
         
-        if metric == 'euclidean': # Euclidean distance: sqrt(sum of squared differences)
+        if metric == 'euclidean':
             return np.sqrt(np.sum(genome_diff ** 2))
-        elif metric == 'manhattan': # Manhattan distance: sum of absolute differences
+        elif metric == 'manhattan':
             return np.sum(np.abs(genome_diff))
-        elif metric == 'chebyshev': # Chebyshev distance: max absolute difference
+        elif metric == 'chebyshev':
             return np.max(np.abs(genome_diff))
-        elif metric == 'p-adic': # p-adic distance
-            return Population.p_adic_norm(genome_diff, p=5)
+        elif metric == 'padic':
+            if padic_norm == 'linf':
+                return Population.padic_distance_linf(genome_diff, p, precision)
+            elif padic_norm == 'l1':
+                return Population.padic_distance_l1(genome_diff, p, precision)
+            elif padic_norm == 'l2':
+                return Population.padic_distance_l2(genome_diff, p, precision)
+            else:
+                raise ValueError(f"Unknown p-adic norm: {padic_norm}")
         else:
             raise ValueError(f"Unknown metric: {metric}")
 
     # Compute p-adic valuation for floats by scaling to integers.
     @staticmethod
-    def p_adic_valuation(x, p, precision=1000):
+    def padic_valuation(x, p, precision=3):
         if x == 0:
             return float('inf')
         # Scale float to integer
@@ -52,19 +56,40 @@ class Population:
             count += 1
         return count
 
+    # Compute p-adic norm |x|_p for a vector for a single component |x|_p = p^(-ν_p(x))
     @staticmethod
-    def p_adic_norm(vector, p=2, precision=1000):
-        valuations = [Population.p_adic_valuation(x, p, precision) for x in vector if abs(x) > 1e-10]  # Numerical tolerance
-        
-        if not valuations:  # Zero vector
+    def padic_norm_component(x, p, precision):
+        val = Population.padic_valuation(x, p, precision)
+        if val == float('inf'):
             return 0.0
-        min_valuation = min(valuations)
-        return p ** (-min_valuation)
+        return p ** (-val)
 
+    # Linfinity p-adic distance: ||v||_p,inf = max_i |v_i|_p, This is the "ultrametric" approach. distance is determined by the single component with largest p-adic norm.
     @staticmethod
-    def p_adic_distance(net1, net2, p=2, precision=1000):
-        genome_diff = net1.genome - net2.genome
-        return Population.p_adic_norm(genome_diff, p, precision)
+    def padic_distance_linf(vector, p, precision):
+        norms = [Population.padic_norm_component(x, p, precision) for x in vector if abs(x) > 1e-10]
+        if not norms:  # Zero vector
+            return 0.0
+        return max(norms)
+    
+    # L1 p-adic norm. Considers the total accumulated p-adic difference across the genome
+    @staticmethod
+    def padic_distance_l1(vector, p, precision):
+        total = 0.0
+        for x in vector:
+            if abs(x) > 1e-10:
+                total += Population.padic_norm_component(x, p, precision)
+        return total
+    
+    # L2 p-adic norm. p-adic analogue of Euclidean distance. Weights larger p-adic differences more heavily than L1
+    @staticmethod
+    def padic_distance_l2(vector, p, precision):
+        sum_squares = 0.0
+        for x in vector:
+            if abs(x) > 1e-10:
+                norm = Population.padic_norm_component(x, p, precision)
+                sum_squares += norm ** 2
+        return np.sqrt(sum_squares)
 
     # Calculates the average distance between pairs out of n randomly chosen individuals
     def population_diversity(self, n_samples=50, metric='euclidean'):
@@ -96,8 +121,8 @@ class Population:
             'max_distance': np.max(distances)
         }
     
-    # return fitness list/array of all networks in population
     def get_fitnesses(self):
+        '''Returns an array of fitness values for all networks in the population.'''
         return np.array([net.fitness() for net in self.pop])
     
     # returns the n best networks in the population

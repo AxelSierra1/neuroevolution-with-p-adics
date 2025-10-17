@@ -19,20 +19,19 @@ y_AND = np.array([[0], [0], [0], [1]])
 
 # Function approximation problem
 # Define input range
-x = np.linspace(-np.pi, np.pi, 10).reshape(-1, 1)  # 10 points between -π and π
+x = np.linspace(-np.pi, np.pi, 100).reshape(-1, 1)  # 100 points between -π and π
 # Define output function
 y = 0.5 * np.cos(2 * x ** 2) * x
 
 
 
-pop = Population(x, y, layers=[2, 1], task='regression', pop_size=50)
+pop = Population(x, y, layers=[2, 1], task='regression', pop_size=100)
 evolve = Neuroevolution(pop)
 best_net = evolve.evolution(generations=500)
-print("labels: ", y)
-print("Predictions: ", best_net.output())
+#print("labels: ", y)
+#print("Predictions: ", best_net.output())
 # print("Population size: ", len(pop))
 # print("First individual in population: ", pop[0])
-
 
 # Disntaces:
     # Genotypic Distance

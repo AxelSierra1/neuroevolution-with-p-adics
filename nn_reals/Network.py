@@ -1,10 +1,10 @@
 import numpy as np
 
-# Neural network with arbitrary layer sizes
 # When specifying layers, it should include the ouput layer always
 # For binary classification it uses sigmoid (outputs values [0, 1])
 # For regression 
 class Network:
+    '''Class representing a neural network with arbitrary fixed layer sizes.'''
     def __init__(self, X, Y, layers=None, genome=None, task='regression'):
         self.X = X # Features
         self.Y = Y # Labels

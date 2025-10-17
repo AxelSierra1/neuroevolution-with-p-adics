@@ -1,8 +1,10 @@
 import numpy as np
 
 from nn_reals.Network import Network
+from nn_reals.EvolutionMetrics import EvolutionMetrics
 
 class Neuroevolution:
+    '''Class implementing neuroevolution with selection, crossover, and mutation.'''
     def __init__(self, population):
         self.population = population
         self.pop_history = [self.population]
@@ -86,8 +88,11 @@ class Neuroevolution:
         return np.clip(rate, min_rate, max_rate)
     
     def evolution(self, generations=100, k=3, mutation_rate=0.15, mutation_prob=0.15, elitism_rate=0.05, crossover_method='average',
-                  crossover_kwargs=None, adaptive_mutation=True, early_stopping=None, task='regression'):
+                  crossover_kwargs=None, track_metrics=True, adaptive_mutation=True, early_stopping=None, task='regression'):
         
+        if track_metrics:
+            metrics = EvolutionMetrics(save_dir='metrics')
+
         if crossover_kwargs is None:
             crossover_kwargs = {}
         
@@ -98,6 +103,9 @@ class Neuroevolution:
         for gen in range(generations):
             # Sort population by fitness
             self.population.pop.sort(key=lambda net: net.fitness())
+
+            if track_metrics:
+                metrics.record_generation(gen, self.population, padic_norm='l2', metric_pairs=['euclidean', 'padic'], p=11, precision=3)
 
             # Calculate diversity each epoch
             diversity_stats = self.population.population_diversity(n_samples=100)
@@ -158,4 +166,9 @@ class Neuroevolution:
             if early_stopping is not None and stagnation_count >= early_stopping:
                 print(f"Early stopping at generation {gen+1}")
                 break
+
+        if track_metrics:
+            metrics.save(filename=f'run_{generations}gen.json')
+            metrics.summary_report()
+
         return self.population.pop[0]

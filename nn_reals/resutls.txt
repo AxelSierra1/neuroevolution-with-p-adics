@@ -1,0 +1,86 @@
+============================================================
+EVOLUTION METRICS SUMMARY
+============================================================
+
+P-adic configuration:
+  Prime (p): 11
+  Precision: 3
+  Norm type: l1
+
+Total generations: 500
+Best fitness achieved: 0.423780
+Final fitness: 0.423780
+
+Diversity trends:
+  Euclidean - Start: 2.5400, End: 0.3629
+  P-adic    - Start: 3.4309, End: 1.3000
+
+Average correlations (fitness diff vs distance):
+  Euclidean: 0.5257
+  P-adic:    0.4307
+============================================================
+============================================================
+EVOLUTION METRICS SUMMARY
+============================================================
+
+P-adic configuration:
+  Prime (p): 11
+  Precision: 3
+  Norm type: l2
+
+Total generations: 500
+Best fitness achieved: 0.423780
+Final fitness: 0.423780
+
+Diversity trends:
+  Euclidean - Start: 2.5400, End: 0.3629
+  P-adic    - Start: 1.8394, End: 0.9533
+
+Average correlations (fitness diff vs distance):
+  Euclidean: 0.5257
+  P-adic:    0.4256
+============================================================
+============================================================
+EVOLUTION METRICS SUMMARY
+============================================================
+
+P-adic configuration:
+  Prime (p): 11
+  Precision: 3
+  Norm type: linf
+
+Total generations: 500
+Best fitness achieved: 0.423780
+Final fitness: 0.423780
+
+Diversity trends:
+  Euclidean - Start: 2.5400, End: 0.3629
+  P-adic    - Start: 1.0000, End: 0.7400
+
+Average correlations (fitness diff vs distance):
+  Euclidean: 0.5257
+  P-adic:    0.3966
+============================================================
+p=11
+Correlation: l1, Precision=3
+pearson
+  Euclidean: 0.5257
+  P-adic:    0.4307
+spearman
+  Euclidean: 0.8099
+  P-adic:    0.6720
+kendall
+  Euclidean: 0.6292
+  P-adic:    0.5454
+
+p=11
+Correlation: l2, Precision=3
+pearson
+  Euclidean: 0.5257
+  P-adic:    0.4256
+spearman
+  Euclidean: 0.8099
+  P-adic:    0.6720
+kendall
+  Euclidean: 0.6292
+  P-adic:    0.5454
