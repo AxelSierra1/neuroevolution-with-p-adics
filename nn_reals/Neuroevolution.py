@@ -2,7 +2,7 @@ import numpy as np
 
 from nn_reals.Network import Network
 from nn_reals.EvolutionMetrics import EvolutionMetrics
-
+from nn_reals.Analyzer import HierarchicalFitnessAnalyzer
 class Neuroevolution:
     '''Class implementing neuroevolution with selection, crossover, and mutation.'''
     def __init__(self, population):
@@ -88,10 +88,10 @@ class Neuroevolution:
         return np.clip(rate, min_rate, max_rate)
     
     def evolution(self, generations=100, k=3, mutation_rate=0.15, mutation_prob=0.15, elitism_rate=0.05, crossover_method='average',
-                  crossover_kwargs=None, track_metrics=True, adaptive_mutation=True, early_stopping=None, task='regression'):
+                  crossover_kwargs=None, track_metrics=True, adaptive_mutation=True, early_stopping=None, task='regression', verbose=True):
         
         if track_metrics:
-            metrics = EvolutionMetrics(save_dir='metrics', metrics=['euclidean', 'manhattan', 'chebyshev', 'padic'])
+            metrics = EvolutionMetrics(save_dir='metrics', metrics=['euclidean', 'manhattan', 'chebyshev', 'padic'], precisions=[1, 2, 3, 4, 5, 10])
 
         if crossover_kwargs is None:
             crossover_kwargs = {}
@@ -105,7 +105,7 @@ class Neuroevolution:
             self.population.pop.sort(key=lambda net: net.fitness())
 
             if track_metrics:
-                metrics.record_generation(gen, self.population, padic_norm='l1', p=11, precision=3)
+                metrics.record_generation(gen, self.population, padic_norm='l1', p=2)
 
             # Calculate and display diversity each epoch
             # diversity_stats = self.population.population_diversity(n_samples=100, metric='euclidean')
@@ -153,9 +153,10 @@ class Neuroevolution:
             best_net = self.population.pop[0]
             best_fitness = best_net.fitness()
             
-            print(f"Generation {gen+1}, best fitness: {best_fitness:.6f}, "
-                  f"mutation rate: {current_mutation_rate:.4f}, "
-                  f"stagnation: {stagnation_count}")
+            if verbose:
+                print(f"Generation {gen+1}, best fitness: {best_fitness:.6f}, "
+                    f"mutation rate: {current_mutation_rate:.4f}, "
+                    f"stagnation: {stagnation_count}")
             
             prev_best_fitness = current_best_fitness
             

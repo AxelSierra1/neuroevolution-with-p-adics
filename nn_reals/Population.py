@@ -1,4 +1,5 @@
 import numpy as np
+from fractions import Fraction
 
 from nn_reals.Network import Network
 
@@ -18,7 +19,7 @@ class Population:
     
     # Genetic distance between two networks based on their genomes (p, presicion, and padic_norm are only used for p-adic metric)
     @staticmethod
-    def genetic_distance(net1, net2, metric, p=11, precision=3, padic_norm='l1'):
+    def genetic_distance(net1, net2, metric, p=2, precision=3, padic_norm='l1'):
         genome_diff = net1.genome - net2.genome
         
         if metric == 'euclidean':
@@ -39,7 +40,30 @@ class Population:
         else:
             raise ValueError(f"Unknown metric: {metric}")
 
+    # Exact p-adic valuation for rationals using Fraction (no correlation found)
+    @staticmethod
+    def rational_padic_valuation(x, p, precision=None):
+        if x == 0:
+            return float('inf')
+        
+        # Convert float to exact rational
+        frac = Fraction(x).limit_denominator()
+        
+        # Compute ν_p(numerator) - ν_p(denominator)
+        def count_factors(n, p):
+            if n == 0:
+                return float('inf')
+            n = abs(n)
+            count = 0
+            while n % p == 0:
+                n //= p
+                count += 1
+            return count
+        
+        return count_factors(frac.numerator, p) - count_factors(frac.denominator, p)
+
     # Compute p-adic valuation for floats by scaling to integers.
+    # Round() for rounding half to even, int() for floor, np.cell() for ceiling (try Stochastic rounding?)
     @staticmethod
     def padic_valuation(x, p, precision=3):
         if x == 0:

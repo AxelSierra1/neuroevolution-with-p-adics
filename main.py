@@ -1,15 +1,16 @@
-from sage.all import * # For later use
+# from sage.all import * # For later use
 import numpy as np
 import matplotlib.pyplot as plt
 
 from nn_reals.Network import Network
 from nn_reals.Population import Population
 from nn_reals.Neuroevolution import Neuroevolution
+from nn_reals.Analyzer import HierarchicalFitnessAnalyzer
 
 np.random.seed(42)
 
-# Problem examples: (X: features, y: labels) 
-# XOR problem 
+# Problem examples: (X: features, y: labels)
+# XOR problem
 x_XOR = np.array([[0,0], [0,1], [1,0], [1,1]])
 y_XOR = np.array([[0], [1], [1], [0]])
 
@@ -19,16 +20,16 @@ y_AND = np.array([[0], [0], [0], [1]])
 
 # Function approximation problem
 # Define input range
-x = np.linspace(-np.pi, np.pi, 100).reshape(-1, 1)  # 100 points between -π and π
+x = np.linspace(-np.pi, np.pi, 500).reshape(-1, 1)  # 500 points between -π and π
 # Define output function
 y = 0.5 * np.cos(2 * x ** 2) * x
 
 
-pop = Population(x, y, layers=[2, 1], task='regression', pop_size=100)
+pop = Population(x, y, layers=[4, 1, 1], task='regression', pop_size=500)
 evolve = Neuroevolution(pop)
-best_net = evolve.evolution(generations=500)
-#print("labels: ", y)
-#print("Predictions: ", best_net.output())
+best_net = evolve.evolution(generations=1000, verbose=False)
+# print("labels: ", y)
+# print("Predictions: ", best_net.output())
 # print("Population size: ", len(pop))
 # print("First individual in population: ", pop[0])
 
