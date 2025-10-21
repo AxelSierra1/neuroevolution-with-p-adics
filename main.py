@@ -5,7 +5,6 @@ import matplotlib.pyplot as plt
 from nn_reals.Network import Network
 from nn_reals.Population import Population
 from nn_reals.Neuroevolution import Neuroevolution
-from nn_reals.Analyzer import HierarchicalFitnessAnalyzer
 
 np.random.seed(42)
 
@@ -13,7 +12,6 @@ np.random.seed(42)
 # XOR problem
 x_XOR = np.array([[0,0], [0,1], [1,0], [1,1]])
 y_XOR = np.array([[0], [1], [1], [0]])
-
 # AND problem
 x_AND = np.array([[0,0], [0,1], [1,0], [1,1]])
 y_AND = np.array([[0], [0], [0], [1]])
@@ -27,7 +25,7 @@ y = 0.5 * np.cos(2 * x ** 2) * x
 
 pop = Population(x, y, layers=[4, 1, 1], task='regression', pop_size=500)
 evolve = Neuroevolution(pop)
-best_net = evolve.evolution(generations=1000, verbose=False)
+best_net = evolve.evolution(generations=1000, verbose=True)
 # print("labels: ", y)
 # print("Predictions: ", best_net.output())
 # print("Population size: ", len(pop))
@@ -37,14 +35,7 @@ best_net = evolve.evolution(generations=1000, verbose=False)
     # Genotypic Distance
     # Phenotypic (Behavioral) Distance
     # Loss/fitness distance
-# Distance thresholds (d0, d1, d2, ...):
-    # Quantile-based
-    # Linear decay
-    # Exponential decay
 # Temporal handling:
     # Snapshot mode: Visualize a single generation as a static tree. Simplest to start with.
     # Animated mode: Show trees evolving over time. This reveals how clusters form, merge, and diverge—much richer but more complex to implement and render.
     # Lineage mode: Track individuals across generations and show which ancestral cluster they belong to. Adds genealogical information back in.
-# Visual encoding:
-    # Node size: Population size
-    # Node color: Average fitness

@@ -1,85 +1,73 @@
 import numpy as np
-
 from nn_reals.Network import Network
 from nn_reals.EvolutionMetrics import EvolutionMetrics
-from nn_reals.Analyzer import HierarchicalFitnessAnalyzer
+
 class Neuroevolution:
-    '''Class implementing neuroevolution with selection, crossover, and mutation.'''
+    '''Optimized neuroevolution with selection, crossover, and mutation.'''
+    
     def __init__(self, population):
         self.population = population
         self.pop_history = [self.population]
+        self._fitness_cache = {}  # Cache fitness calculations
 
-    # Tournament selection
-    # We choose 2 parents from a cluster of k candidates chosen at random (we choose the 2 with best fitness in this cluster)
+    def _get_fitness(self, net):
+        """Cache fitness values to avoid recomputation"""
+        net_id = id(net)
+        if net_id not in self._fitness_cache:
+            self._fitness_cache[net_id] = net.fitness()
+        return self._fitness_cache[net_id]
+
     def select_parents(self, k):
-        # First parent
-        candidates1 = np.random.choice(self.population.pop, k, replace=False)
-        parent1 = min(candidates1, key=lambda net: net.fitness())
-
-        # Second parent, ensure its different than parent1
-        while True:
-            candidates2 = np.random.choice(self.population.pop, k, replace=False)
-            parent2 = min(candidates2, key=lambda net: net.fitness())
-            if parent2 is not parent1:
-                break
-
-        return parent1, parent2
-
-    # Simply average all weight matrices and bias vectors of both parents
-    def crossover_average(self, parent1, parent2):
-        child_genome = (parent1.genome + parent2.genome) / 2
+        """Tournament selection - vectorized for speed"""
+        # Select all candidates at once
+        candidates = np.random.choice(self.population.pop, k * 2, replace=False)
         
-        return Network(parent1.X, parent1.Y, layers=parent1.layers[1:], genome=child_genome, task=parent1.task)
-    
-    # Chooses randomly a point in the list of all parameters of the child, parameters before that point come from parent1, after that point come from parent2
-    # Can choose the amount of points to split the genes from both parents
-    def crossover_npoints(self, parent1, parent2, n_points=1):
-        genome_length = len(parent1.genome)
+        # Get fitness for all candidates (use cached values)
+        fitness_vals = np.array([self._get_fitness(net) for net in candidates])
         
-        if n_points == 1:
-            # Single-point crossover
-            crossover_point = np.random.randint(1, genome_length)
-            child_genome = np.concatenate([
-                parent1.genome[:crossover_point],
-                parent2.genome[crossover_point:]
-            ])
-        else:
-            # Multi-point crossover
-            crossover_points = sorted(np.random.choice(
-                range(1, genome_length), 
-                size=min(n_points, genome_length - 1), 
-                replace=False
-            ))
-            crossover_points = [0] + crossover_points + [genome_length]
+        # Get indices of two best from separate tournaments
+        idx1 = np.argmin(fitness_vals[:k])
+        idx2 = k + np.argmin(fitness_vals[k:])
+        
+        return candidates[idx1], candidates[idx2]
+
+    def crossover(self, p1, p2, method='average', **kwargs):
+        """Unified crossover method - more compact"""
+        if method == 'average':
+            child_genome = (p1.genome + p2.genome) * 0.5
+        
+        elif method == 'point':
+            n_points = kwargs.get('n_points', 1)
+            genome_len = len(p1.genome)
             
-            # Create child by alternating between parents
-            child_genome = np.zeros_like(parent1.genome)
-            for i in range(len(crossover_points) - 1):
-                start, end = crossover_points[i], crossover_points[i + 1]
-                if i % 2 == 0:
-                    child_genome[start:end] = parent1.genome[start:end]
-                else:
-                    child_genome[start:end] = parent2.genome[start:end]
+            if n_points == 1:
+                point = np.random.randint(1, genome_len)
+                child_genome = np.concatenate([p1.genome[:point], p2.genome[point:]])
+            else:
+                points = np.sort(np.random.choice(genome_len - 1, min(n_points, genome_len - 1), replace=False) + 1)
+                points = np.concatenate([[0], points, [genome_len]])
+                
+                # Vectorized alternating selection
+                child_genome = np.empty_like(p1.genome)
+                for i in range(len(points) - 1):
+                    parent = p1 if i % 2 == 0 else p2
+                    child_genome[points[i]:points[i+1]] = parent.genome[points[i]:points[i+1]]
         
-        return Network(parent1.X, parent1.Y, layers=parent1.layers[1:], genome=child_genome, task=parent1.task)
-    
-    # Each parameter chosen randomly from either parent, prob is probability of choosing a parameter from parent1
-    def crossover_uniform(self, parent1, parent2, prob=0.5):
-        # Create uniform crossover mask
-        mask = np.random.random(parent1.genome.shape) < prob
+        elif method == 'uniform':
+            mask = np.random.random(p1.genome.shape) < kwargs.get('prob', 0.5)
+            child_genome = np.where(mask, p1.genome, p2.genome)
         
-        # If mask == True, use parent1; if False, use parent2
-        child_genome = np.where(mask, parent1.genome, parent2.genome)
+        else:
+            raise ValueError(f"Unknown crossover method: {method}")
         
-        return Network(parent1.X, parent1.Y, layers=parent1.layers[1:], genome=child_genome, task=parent1.task)
+        return Network(p1.X, p1.Y, layers=p1.layers[1:], genome=child_genome, task=p1.task)
 
-    # stagnation_count is the number of generations without improvement
     @staticmethod
-    def adaptive_mutation_rate(base_rate, fitness_improvement, stagnation_count, min_rate=0.01, max_rate=0.6):
-        # If fitness is improving, decrease mutation rate
+    def adaptive_mutation_rate(base_rate, fitness_improvement, stagnation_count, 
+                               min_rate=0.01, max_rate=0.6):
+        """Adaptive mutation rate based on progress"""
         if fitness_improvement > 1e-6:
             rate = base_rate * 0.9
-        # If stagnating, increase mutation rate
         elif stagnation_count > 5:
             rate = base_rate * (1.0 + 0.1 * min(stagnation_count - 5, 10))
         else:
@@ -87,89 +75,74 @@ class Neuroevolution:
         
         return np.clip(rate, min_rate, max_rate)
     
-    def evolution(self, generations=100, k=3, mutation_rate=0.15, mutation_prob=0.15, elitism_rate=0.05, crossover_method='average',
-                  crossover_kwargs=None, track_metrics=True, adaptive_mutation=True, early_stopping=None, task='regression', verbose=True):
+    def evolution(self, generations=100, k=3, mutation_rate=0.15, mutation_prob=0.15, 
+                  elitism_rate=0.05, crossover_method='average', crossover_kwargs=None, 
+                  track_metrics=True, adaptive_mutation=True, early_stopping=None, 
+                  task='regression', verbose=True):
         
-        if track_metrics:
-            metrics = EvolutionMetrics(save_dir='metrics', metrics=['euclidean', 'manhattan', 'chebyshev', 'padic'], precisions=[1, 2, 3, 4, 5, 10])
-
-        if crossover_kwargs is None:
-            crossover_kwargs = {}
+        crossover_kwargs = crossover_kwargs or {}
+        metrics = EvolutionMetrics(
+            save_dir='metrics', 
+            metrics=['euclidean', 'manhattan', 'chebyshev', 'padic', 'qpadic'], 
+            multipliers=[1, 2, 3, 4, 5, 10, 20, 50, 100, 200, 500, 1000],
+            qpadic_primes=[2, 3, 5, 7, 11, 13, 97, 541, 7919]
+        ) if track_metrics else None
         
         prev_best_fitness = float('inf')
         stagnation_count = 0
         current_mutation_rate = mutation_rate
+        elitism = max(1, int(elitism_rate * self.population.pop_size))
         
         for gen in range(generations):
-            # Sort population by fitness
-            self.population.pop.sort(key=lambda net: net.fitness())
-
-            if track_metrics:
-                metrics.record_generation(gen, self.population, padic_norm='l1', p=2)
-
-            # Calculate and display diversity each epoch
-            # diversity_stats = self.population.population_diversity(n_samples=100, metric='euclidean')
-            # print(f"Mean diversity: {diversity_stats['mean_distance']:.4f}")
-            # print(f"Std deviation: {diversity_stats['std_distance']:.4f}")
+            # Clear fitness cache at start of generation
+            self._fitness_cache.clear()
             
-            current_best_fitness = self.population.pop[0].fitness()
+            # Sort population once with cached fitness
+            self.population.pop.sort(key=self._get_fitness)
+            
+            if metrics:
+                metrics.record_generation(gen, self.population, qpadic_norm='l1')
+            
+            current_best_fitness = self._get_fitness(self.population.pop[0])
             fitness_improvement = prev_best_fitness - current_best_fitness
             
+            # Adaptive mutation
             if adaptive_mutation:
-                if fitness_improvement <= 1e-6:
-                    stagnation_count += 1
-                else:
-                    stagnation_count = 0
-                
-                current_mutation_rate = Neuroevolution.adaptive_mutation_rate(
+                stagnation_count = stagnation_count + 1 if fitness_improvement <= 1e-6 else 0
+                current_mutation_rate = self.adaptive_mutation_rate(
                     mutation_rate, fitness_improvement, stagnation_count
                 )
             
-            # Elitism: preserve best networks
-            elitism = max(1, int(elitism_rate * self.population.pop_size))
+            # Elitism + offspring generation
             new_population = self.population.pop[:elitism]
             
-            # Generate new offspring
-            while len(new_population) < self.population.pop_size:
+            # Batch create offspring
+            offspring_needed = self.population.pop_size - elitism
+            for _ in range(offspring_needed):
                 p1, p2 = self.select_parents(k)
-                
-                if crossover_method == 'average':
-                    child = self.crossover_average(p1, p2)
-                elif crossover_method == 'point':
-                    n_points = crossover_kwargs.get('n_points', 1)
-                    child = self.crossover_npoints(p1, p2, n_points=n_points)
-                elif crossover_method == 'uniform':
-                    prob = crossover_kwargs.get('prob', 0.5)
-                    child = self.crossover_uniform(p1, p2, prob=prob)
-                else:
-                    raise ValueError(f"Unknown crossover method: {crossover_method}")
-                
+                child = self.crossover(p1, p2, method=crossover_method, **crossover_kwargs)
                 child.mutate(rate=current_mutation_rate, prob=mutation_prob)
                 new_population.append(child)
             
-            # Update population
             self.population.pop = new_population
             self.pop_history.append(self.population.pop[:])
-            best_net = self.population.pop[0]
-            best_fitness = best_net.fitness()
             
             if verbose:
-                print(f"Generation {gen+1}, best fitness: {best_fitness:.6f}, "
-                    f"mutation rate: {current_mutation_rate:.4f}, "
-                    f"stagnation: {stagnation_count}")
+                print(f"Gen {gen+1}: fitness={current_best_fitness:.6f}, "
+                      f"mut_rate={current_mutation_rate:.4f}, stag={stagnation_count}")
             
             prev_best_fitness = current_best_fitness
             
-            # Convergence check
-            if best_fitness < 1e-4:
+            # Early stopping
+            if current_best_fitness < 1e-4:
                 print("Converged!")
                 break
-            if early_stopping is not None and stagnation_count >= early_stopping:
+            if early_stopping and stagnation_count >= early_stopping:
                 print(f"Early stopping at generation {gen+1}")
                 break
-
-        if track_metrics:
+        
+        if metrics:
             metrics.save(filename=f'run_{generations}gen.json')
             metrics.summary_report()
-
+        
         return self.population.pop[0]
