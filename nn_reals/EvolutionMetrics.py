@@ -61,8 +61,11 @@ class EvolutionMetrics:
                     for m in self.multipliers:
                         div = self._compute_qpadic_diversity(population, p, m, qpadic_norm)
                         self.history[f'qpadic_p{p}_mult{m}_diversity'].append(div['mean_distance'])
+            elif metric == 'padic':
+                div = population.population_diversity(n_samples=100, metric='padic', p=2, multiplier=None, qpadic_norm=None)
+                self.history[f'{metric.replace("-", "")}_diversity'].append(div['mean_distance'])
             else:
-                div = population.population_diversity(n_samples=100, metric=metric)
+                div = population.population_diversity(n_samples=100, metric=metric, p=None, multiplier=None, qpadic_norm=None)
                 self.history[f"{metric.replace('-', '')}_diversity"].append(div['mean_distance'])
         
         # Distance to best
@@ -90,8 +93,11 @@ class EvolutionMetrics:
                                     p=p, multiplier=m, qpadic_norm=qpadic_norm
                                 )
                                 distances[f'qpadic_p{p}_mult{m}'].append(dist)
+                    elif metric == 'padic':
+                        dist = Population.genetic_distance(best_net, net, metric='padic', p=2, multiplier=None, qpadic_norm=None)
+                        distances[metric].append(dist)
                     else:
-                        dist = Population.genetic_distance(best_net, net, metric=metric)
+                        dist = Population.genetic_distance(best_net, net, metric=metric, p=None, multiplier=None, qpadic_norm=None)
                         distances[metric].append(dist)
         
         # Store means and correlations

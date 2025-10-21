@@ -31,6 +31,12 @@ best_net = evolve.evolution(generations=1000, verbose=True)
 # print("Population size: ", len(pop))
 # print("First individual in population: ", pop[0])
 
+
+# Pearson correlation across many pairs.
+# High correlation means: "Networks that are genetically far apart tend to have different fitness values."
+# Average correlations (fitness diff vs distance) refer to the fitness diff between 2 genomes vs their distance according to some norm
+
+
 # Disntaces:
     # Genotypic Distance
     # Phenotypic (Behavioral) Distance
