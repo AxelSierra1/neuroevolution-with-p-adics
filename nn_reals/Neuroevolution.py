@@ -16,9 +16,22 @@ class Neuroevolution:
         if net_id not in self._fitness_cache:
             self._fitness_cache[net_id] = net.fitness()
         return self._fitness_cache[net_id]
+    
+    def _invalidate_fitness(self, net):
+        """Remove a network's fitness from cache after mutation"""
+        net_id = id(net)
+        if net_id in self._fitness_cache:
+            del self._fitness_cache[net_id]
 
     def select_parents(self, k):
         """Tournament selection - vectorized for speed"""
+        pop_size = len(self.population.pop)
+        
+        # Validate tournament size
+        if k * 2 > pop_size:
+            raise ValueError(f"Tournament size {k} is too large for population size {pop_size}. "
+                           f"Need at least {k * 2} individuals.")
+        
         # Select all candidates at once
         candidates = np.random.choice(self.population.pop, k * 2, replace=False)
         
@@ -84,8 +97,8 @@ class Neuroevolution:
         metrics = EvolutionMetrics(
             save_dir='metrics', 
             metrics=['euclidean', 'manhattan', 'chebyshev', 'padic', 'qpadic'], 
-            multipliers=[1, 2, 3, 5, 10, 20, 50, 100, 200, 500, 1000, 10000],
-            qpadic_primes=[2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 36, 100, 1000]
+            multipliers=[1, 2, 3, 4, 5, 10, 20, 50, 100, 200, 500, 1000, 10000],
+            qpadic_bases=[2, 3, 4, 5, 6, 7, 8, 9, 10, 12, 36, 100, 1000, 10000]
         ) if track_metrics else None
         
         prev_best_fitness = float('inf')
@@ -94,9 +107,6 @@ class Neuroevolution:
         elitism = max(1, int(elitism_rate * self.population.pop_size))
         
         for gen in range(generations):
-            # Clear fitness cache at start of generation
-            self._fitness_cache.clear()
-            
             # Sort population once with cached fitness
             self.population.pop.sort(key=self._get_fitness)
             
@@ -122,10 +132,19 @@ class Neuroevolution:
                 p1, p2 = self.select_parents(k)
                 child = self.crossover(p1, p2, method=crossover_method, **crossover_kwargs)
                 child.mutate(rate=current_mutation_rate, prob=mutation_prob)
+                # Invalidate child's fitness cache after mutation
+                self._invalidate_fitness(child)
                 new_population.append(child)
             
             self.population.pop = new_population
             self.pop_history.append(self.population.pop[:])
+            
+            # Clear fitness cache for non-elite individuals
+            # Keep cache only for elite individuals
+            elite_ids = {id(net) for net in self.population.pop[:elitism]}
+            self._fitness_cache = {net_id: fitness 
+                                  for net_id, fitness in self._fitness_cache.items() 
+                                  if net_id in elite_ids}
             
             if verbose:
                 print(f"Gen {gen+1}: fitness={current_best_fitness:.6f}, "
@@ -140,6 +159,9 @@ class Neuroevolution:
             if early_stopping and stagnation_count >= early_stopping:
                 print(f"Early stopping at generation {gen+1}")
                 break
+        
+        # Ensure population is sorted before returning best
+        self.population.pop.sort(key=self._get_fitness)
         
         if metrics:
             metrics.save(filename=f'run_{generations}gen.json')

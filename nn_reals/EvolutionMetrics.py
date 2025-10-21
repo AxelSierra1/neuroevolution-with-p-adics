@@ -4,12 +4,12 @@ from pathlib import Path
 from scipy.stats import pearsonr, spearmanr, kendalltau
 
 class EvolutionMetrics:
-    def __init__(self, save_dir='metrics', metrics=None, qpadic_primes=None, multipliers=None):
+    def __init__(self, save_dir='metrics', metrics=None, qpadic_bases=None, multipliers=None):
         self.save_dir = Path(save_dir)
         self.save_dir.mkdir(exist_ok=True)
         
         self.metrics = metrics or ['euclidean', 'qpadic']
-        self.qpadic_primes = qpadic_primes or [2, 3, 5, 7]
+        self.qpadic_bases = qpadic_bases or [2, 3, 5, 7]
         self.multipliers = multipliers or [2, 3, 4, 5]
         self.qpadic_config = {}
         
@@ -22,7 +22,7 @@ class EvolutionMetrics:
         # Add metric-specific keys
         for metric in self.metrics:
             if metric == 'qpadic':
-                for p in self.qpadic_primes:
+                for p in self.qpadic_bases:
                     for m in self.multipliers:
                         prefix = f'qpadic_p{p}_mult{m}'
                         for suffix in ['diversity', 'to_best', '']:
@@ -40,7 +40,7 @@ class EvolutionMetrics:
         # Store config on first call
         if 'qpadic' in self.metrics and not self.qpadic_config:
             self.qpadic_config = {
-                'primes': self.qpadic_primes,
+                'bases': self.qpadic_bases,
                 'multipliers': self.multipliers,
                 'norm': qpadic_norm
             }
@@ -57,16 +57,16 @@ class EvolutionMetrics:
         # Diversity for all metrics
         for metric in self.metrics:
             if metric == 'qpadic':
-                for p in self.qpadic_primes:
+                for p in self.qpadic_bases:
                     for m in self.multipliers:
                         div = self._compute_qpadic_diversity(population, p, m, qpadic_norm)
                         self.history[f'qpadic_p{p}_mult{m}_diversity'].append(div['mean_distance'])
             elif metric == 'padic':
-                div = population.population_diversity(n_samples=100, metric='padic', p=2, multiplier=None, qpadic_norm=None)
+                div = population.population_diversity(n_samples=100, metric='padic', base=2, multiplier=None, qpadic_norm=None)
                 self.history[f'{metric.replace("-", "")}_diversity'].append(div['mean_distance'])
             else:
-                div = population.population_diversity(n_samples=100, metric=metric, p=None, multiplier=None, qpadic_norm=None)
-                self.history[f"{metric.replace('-', '')}_diversity"].append(div['mean_distance'])
+                div = population.population_diversity(n_samples=100, metric=metric, base=None, multiplier=None, qpadic_norm=None)
+                self.history[f'{metric.replace("-", "")}_diversity'].append(div['mean_distance'])
         
         # Distance to best
         sample_size = min(50, population.pop_size)
@@ -75,36 +75,47 @@ class EvolutionMetrics:
         distances = {m: [] for m in self.metrics if m != 'qpadic'}
         if 'qpadic' in self.metrics:
             distances.update({f'qpadic_p{p}_mult{m}': [] 
-                            for p in self.qpadic_primes for m in self.multipliers})
+                            for p in self.qpadic_bases for m in self.multipliers})
         
         fitness_diffs = []
         
+        # Get best network index for proper comparison
+        best_idx = np.argmin(fitnesses)
+        
         for idx in sample_indices:
-            net = population[idx]
-            if net is not best_net:
-                fitness_diffs.append(abs(net.fitness() - best_net.fitness()))
+            # Skip if this is the best network
+            if idx == best_idx:
+                continue
                 
-                for metric in self.metrics:
-                    if metric == 'qpadic':
-                        for p in self.qpadic_primes:
-                            for m in self.multipliers:
-                                dist = Population.genetic_distance(
-                                    best_net, net, metric='qpadic',
-                                    p=p, multiplier=m, qpadic_norm=qpadic_norm
-                                )
-                                distances[f'qpadic_p{p}_mult{m}'].append(dist)
-                    elif metric == 'padic':
-                        dist = Population.genetic_distance(best_net, net, metric='padic', p=2, multiplier=None, qpadic_norm=None)
-                        distances[metric].append(dist)
-                    else:
-                        dist = Population.genetic_distance(best_net, net, metric=metric, p=None, multiplier=None, qpadic_norm=None)
-                        distances[metric].append(dist)
+            net = population[idx]
+            fitness_diffs.append(abs(net.fitness() - best_net.fitness()))
+            
+            for metric in self.metrics:
+                if metric == 'qpadic':
+                    for p in self.qpadic_bases:
+                        for m in self.multipliers:
+                            dist = Population.genetic_distance(
+                                best_net, net, metric='qpadic',
+                                base=p, multiplier=m, qpadic_norm=qpadic_norm
+                            )
+                            distances[f'qpadic_p{p}_mult{m}'].append(dist)
+                elif metric == 'padic':
+                    dist = Population.genetic_distance(best_net, net, metric='padic', base=2, multiplier=None, qpadic_norm=None)
+                    distances[metric].append(dist)
+                else:
+                    dist = Population.genetic_distance(best_net, net, metric=metric, base=None, multiplier=None, qpadic_norm=None)
+                    distances[metric].append(dist)
         
         # Store means and correlations
         for key, dists in distances.items():
             metric_key = key if 'qpadic' in key else key.replace('-', '')
-            self.history[f'{metric_key}_to_best'].append(np.mean(dists))
-            self.history[f'fitness_vs_{metric_key}'].append(list(zip(fitness_diffs, dists)))
+            if dists:  # Only compute if we have distance data
+                self.history[f'{metric_key}_to_best'].append(np.mean(dists))
+                self.history[f'fitness_vs_{metric_key}'].append(list(zip(fitness_diffs, dists)))
+            else:
+                # Handle edge case where best network was the only one sampled
+                self.history[f'{metric_key}_to_best'].append(0.0)
+                self.history[f'fitness_vs_{metric_key}'].append([])
     
     def _compute_qpadic_diversity(self, population, p, multiplier, qpadic_norm, n_samples=100):
         """Compute qp-adic diversity"""
@@ -120,7 +131,7 @@ class EvolutionMetrics:
             idx1, idx2 = np.random.choice(population.pop_size, 2, replace=False)
             dist = Population.genetic_distance(
                 population[idx1], population[idx2], metric='qpadic',
-                p=p, multiplier=multiplier, qpadic_norm=qpadic_norm
+                base=p, multiplier=multiplier, qpadic_norm=qpadic_norm
             )
             distances.append(dist)
         
@@ -130,11 +141,11 @@ class EvolutionMetrics:
             'min_distance': np.min(distances), 'max_distance': np.max(distances)
         }
     
-    def save(self, filename='multi_prime_metrics.json'):
+    def save(self, filename='multi_base_metrics.json'):
         """Save metrics to JSON"""
         save_data = {
             'metrics_tracked': self.metrics,
-            'qpadic_primes': self.qpadic_primes if 'qpadic' in self.metrics else None,
+            'qpadic_bases': self.qpadic_bases if 'qpadic' in self.metrics else None,
             'multipliers': self.multipliers if 'qpadic' in self.metrics else None,
             'qpadic_config': self.qpadic_config or None,
             'metrics': self.history
@@ -144,7 +155,7 @@ class EvolutionMetrics:
             json.dump(save_data, f, indent=2)
         print(f"Metrics saved to {self.save_dir / filename}")
     
-    def get_correlations(self, generation, metric=None, prime=None, multiplier=None, method='pearson'):
+    def get_correlations(self, generation, metric=None, base=None, multiplier=None, method='pearson'):
         """Get correlations for a generation"""
         if generation >= len(self.history['generation']):
             return None
@@ -157,21 +168,25 @@ class EvolutionMetrics:
                 return None
             
             try:
-                corr_func = {'pearson': pearsonr, 'spearman': spearmanr, 'kendall': kendalltau}[method]
+                corr_funcs = {'pearson': pearsonr, 'spearman': spearmanr, 'kendall': kendalltau}
+                corr_func = corr_funcs.get(method)
+                if corr_func is None:
+                    raise ValueError(f"Unknown correlation method: {method}")
                 corr, _ = corr_func(x, y)
                 return None if np.isnan(corr) or np.isinf(corr) else corr
-            except:
+            except Exception as e:
+                # Silently handle correlation computation errors
                 return None
         
         results = {}
         
         # Handle qpadic
         if metric == 'qpadic' or (metric is None and 'qpadic' in self.metrics):
-            for p in ([prime] if prime else self.qpadic_primes):
+            for p in ([base] if base else self.qpadic_bases):
                 for m in ([multiplier] if multiplier else self.multipliers):
                     key = f'qpadic_p{p}_mult{m}'
                     data = self.history[f'fitness_vs_{key}'][generation]
-                    if data:
+                    if data and len(data) >= 3:  # Need at least 3 points for meaningful correlation
                         x, y = zip(*data)
                         corr = safe_corr(x, y)
                         if corr is not None:
@@ -182,7 +197,7 @@ class EvolutionMetrics:
         for m in metrics_to_check:
             key = m.replace('-', '')
             data = self.history[f'fitness_vs_{key}'][generation]
-            if data:
+            if data and len(data) >= 3:  # Need at least 3 points for meaningful correlation
                 x, y = zip(*data)
                 corr = safe_corr(x, y)
                 if corr is not None:
@@ -193,14 +208,14 @@ class EvolutionMetrics:
     def summary_report(self):
         """Print summary statistics"""
         print("\n" + "="*70)
-        print("MULTI-PRIME EVOLUTION METRICS SUMMARY")
+        print("MULTI-BASE EVOLUTION METRICS SUMMARY")
         print("="*70)
         print(f"\nMetrics tracked: {', '.join(self.metrics)}")
         
         if self.qpadic_config:
             print(f"\nqp-adic configuration:")
-            print(f"  Primes: {self.qpadic_config['primes']}")
-            print(f"  Precisions: {self.qpadic_config['multipliers']}")
+            print(f"  Bases: {self.qpadic_config['bases']}")
+            print(f"  Multipliers: {self.qpadic_config['multipliers']}")
             print(f"  Norm type: {self.qpadic_config['norm']}")
         
         print(f"\nTotal generations: {len(self.history['generation'])}")
@@ -210,19 +225,19 @@ class EvolutionMetrics:
         print("\nDiversity trends:")
         for metric in self.metrics:
             if metric == 'qpadic':
-                for p in self.qpadic_primes:
+                for p in self.qpadic_bases:
                     for m in self.multipliers:
                         key = f'qpadic_p{p}_mult{m}_diversity'
                         if self.history[key]:
                             print(f"  qp-adic (p={p}, m={m}): Start: {self.history[key][0]:.4f}, End: {self.history[key][-1]:.4f}")
             else:
-                key = f"{metric.replace('-', '')}_diversity"
+                key = f'{metric.replace("-", "")}_diversity'
                 if self.history[key]:
                     print(f"  {metric.capitalize():20s} - Start: {self.history[key][0]:.4f}, End: {self.history[key][-1]:.4f}")
         
         # Correlations
         mid_start, mid_end = len(self.history['generation']) // 4, 3 * len(self.history['generation']) // 4
-        corrs = {f'qpadic_p{p}_mult{m}': [] for p in self.qpadic_primes for m in self.multipliers} if 'qpadic' in self.metrics else {}
+        corrs = {f'qpadic_p{p}_mult{m}': [] for p in self.qpadic_bases for m in self.multipliers} if 'qpadic' in self.metrics else {}
         corrs.update({m: [] for m in self.metrics if m != 'qpadic'})
         
         valid_gens = 0
@@ -240,7 +255,7 @@ class EvolutionMetrics:
             print(f"  Based on {valid_gens}/{mid_end - mid_start} valid generations")
             for metric in self.metrics:
                 if metric == 'qpadic':
-                    for p in self.qpadic_primes:
+                    for p in self.qpadic_bases:
                         for m in self.multipliers:
                             key = f'qpadic_p{p}_mult{m}'
                             if corrs[key]:
@@ -251,40 +266,40 @@ class EvolutionMetrics:
             print("\nNo valid correlations computed")
         print("="*70 + "\n")
     
-    def compare_primes_report(self):
-        """Compare different primes and multipliers"""
+    def compare_bases_report(self):
+        """Compare different bases and multipliers"""
         if 'qpadic' not in self.metrics:
             print("No qp-adic metrics to compare")
             return
         
         print("\n" + "="*70)
-        print("QP-ADIC PRIME AND PRECISION COMPARISON")
+        print("QP-ADIC BASE AND MULTIPLIER COMPARISON")
         print("="*70)
         
-        print("\nFinal diversity by (prime, multiplier):")
-        for p in self.qpadic_primes:
-            print(f"\n  Prime {p}:")
+        print("\nFinal diversity by (base, multiplier):")
+        for p in self.qpadic_bases:
+            print(f"\n  Base {p}:")
             for m in self.multipliers:
                 key = f'qpadic_p{p}_mult{m}_diversity'
                 if self.history[key]:
-                    print(f"    Precision {m}: {self.history[key][-1]:.6f}")
+                    print(f"    Multiplier {m}: {self.history[key][-1]:.6f}")
         
-        print("\nAverage correlation (mid-evolution) by (prime, multiplier):")
+        print("\nAverage correlation (mid-evolution) by (base, multiplier):")
         mid_start, mid_end = len(self.history['generation']) // 4, 3 * len(self.history['generation']) // 4
         
-        for p in self.qpadic_primes:
-            print(f"\n  Prime {p}:")
+        for p in self.qpadic_bases:
+            print(f"\n  Base {p}:")
             for m in self.multipliers:
                 corrs, valid = [], 0
                 for gen in range(mid_start, mid_end):
-                    c = self.get_correlations(gen, prime=p, multiplier=m)
+                    c = self.get_correlations(gen, base=p, multiplier=m)
                     key = f'qpadic_p{p}_mult{m}_correlation'
                     if c and key in c:
                         valid += 1
                         corrs.append(c[key])
                 
                 if corrs:
-                    print(f"    Precision {m}: {np.mean(corrs):.4f} (σ={np.std(corrs):.4f}, n={valid})")
+                    print(f"    Multiplier {m}: {np.mean(corrs):.4f} (σ={np.std(corrs):.4f}, n={valid})")
                 else:
-                    print(f"    Precision {m}: No valid correlations")
+                    print(f"    Multiplier {m}: No valid correlations")
         print("="*70 + "\n")
