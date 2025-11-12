@@ -79,6 +79,9 @@ class Network:
     (This is sometimes done the other way around, simply taking the transpose of both sides:
     (xA + b)T = (x')T -> (xA)T + bT=x'T -> ATxT + bT=x'T)
     '''
+    def _tanh(self, input):
+        return np.tanh(input)
+
     # The predictions from the nn
     def output(self):
         weights, biases = self.decode_genome()
@@ -88,7 +91,8 @@ class Network:
 
             # Apply activation based on layer type
             if i < len(weights) - 1:
-                current_input = self._sigmoid(z) # Hidden layers always use sigmoid
+                # current_input = self._sigmoid(z) # Hidden layers always use sigmoid
+                current_input = self._tanh(z) 
             else: # Output layer: depends on task
                 if self.task == 'classification': # For classification: sigmoid for binary
                     current_input = self._sigmoid(z)
@@ -110,7 +114,7 @@ class Network:
     
     # Adds perturbations/noise to the weights and biases
     # rate tells us how strong the noise is
-    def mutate(self, rate=0.15, prob=0.15):
+    def mutate(self, rate=0.05, prob=0.15):
         noise = np.random.randn(self.genome.shape[0]) * rate
         mask = np.random.rand(self.genome.shape[0]) < prob
         

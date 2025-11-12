@@ -32,9 +32,9 @@ class Population:
             if qpadic_norm == 'linf':
                 return Population.qpadic_distance_linf(genome_diff, base, multiplier)
             elif qpadic_norm == 'l1':
-                return Population.qpadic_distance_l1(genome_diff, base, multiplier)
+                return Population.qpadic_distance_l1(net1.genome, net2.genome, base, multiplier)
             elif qpadic_norm == 'l2':
-                return Population.qpadic_distance_l2(genome_diff, base, multiplier)
+                return Population.qpadic_distance_l2(net1.genome, net2.genome, base, multiplier)
             else:
                 raise ValueError(f"Unknown p-adic norm: {qpadic_norm}")
         elif metric == 'padic':
@@ -42,31 +42,38 @@ class Population:
         else:
             raise ValueError(f"Unknown metric: {metric}")
 
-    # Compute pseudo p-adic valuation for floats by scaling to integers.
+    # quantization map
     # Round() for rounding half to even, int() for floor, np.cell() for ceiling (try Stochastic rounding?)
     @staticmethod
-    def qpadic_valuation(x, base, multiplier):
-        if x == 0:
-            return float('inf')
-        # Scale float to integer
-        x_scaled = round(abs(x) * multiplier)
+    def q_map(x, multiplier):
+        return round(x * multiplier)
+
+    # Compute pseudo b-adic valuation for floats by scaling to integers.
+    @staticmethod
+    def qpadic_valuation(x, y, base, multiplier):
+        # Quantize the inputs
+        q_x = Population.q_map(x, multiplier)
+        q_y = Population.q_map(y, multiplier)
+        q_diff = abs(q_x - q_y)
         
-        if x_scaled == 0:  # Very small values round to zero
+        # q_diff = abs(Population.q_map(x-y, multiplier))
+
+        if q_diff == 0:  # Very small values round to zero
             return float('inf')
         
         count = 0
-        while x_scaled % base == 0:
-            x_scaled //= base
+        while q_diff % base == 0:
+            q_diff //= base
             count += 1
         return count
 
     # Compute p-adic norm |x|_p for a vector for a single component |x|_p = p^(-ν_p(x))
     @staticmethod
-    def qpadic_norm_component(x, base, multiplier):
-        val = Population.qpadic_valuation(x, base, multiplier)
+    def qpadic_norm_component(x, y, base, multiplier):
+        val = Population.qpadic_valuation(x, y, base, multiplier)
         if val == float('inf'):
             return 0.0
-        return base ** (-val)
+        return 1 / (1 + val)
 
     # Linfinity p-adic distance: ||v||_p,inf = max_i |v_i|_p, This is the "ultrametric" approach. distance is determined by the single component with largest p-adic norm.
     @staticmethod
@@ -78,20 +85,20 @@ class Population:
     
     # L1 p-adic norm. Considers the total accumulated p-adic difference across the genome
     @staticmethod
-    def qpadic_distance_l1(vector, base, multiplier):
+    def qpadic_distance_l1(net1, net2, base, multiplier):
         total = 0.0
-        for x in vector:
-            if abs(x) > 1e-10:
-                total += Population.qpadic_norm_component(x, base, multiplier)
+        for i in range(len(net1)):
+            if abs(net1[i]) > 1e-10 and abs(net2[i]) > 1e-10:
+                total += Population.qpadic_norm_component(net1[i], net2[i], base, multiplier)
         return total
     
     # L2 p-adic norm. p-adic analogue of Euclidean distance. Weights larger p-adic differences more heavily than L1
     @staticmethod
-    def qpadic_distance_l2(vector, base, multiplier):
+    def qpadic_distance_l2(net1, net2, base, multiplier):
         sum_squares = 0.0
-        for x in vector:
-            if abs(x) > 1e-10:
-                norm = Population.qpadic_norm_component(x, base, multiplier)
+        for i in range(len(net1)):
+            if abs(net1[i]) > 1e-10 and abs(net2[i]) > 1e-10:
+                norm = Population.qpadic_norm_component(net1[i], net2[i], base, multiplier)
                 sum_squares += norm ** 2
         return np.sqrt(sum_squares)
     

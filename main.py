@@ -18,14 +18,22 @@ y_AND = np.array([[0], [0], [0], [1]])
 
 # Function approximation problem
 # Define input range
-x = np.linspace(-np.pi, np.pi, 500).reshape(-1, 1)  # 500 points between -π and π
+x = np.linspace(-np.pi, np.pi, 100).reshape(-1, 1)  # 500 points between -π and π
 # Define output function
 y = 0.5 * np.cos(2 * x ** 2) * x
 
+x_input = np.linspace(-np.pi, np.pi, 100).reshape(-1, 1)
+x_featured = np.hstack([
+    x_input,          # The original linear term
+    x_input**2,       # The quadratic term
+    np.sin(x_input),  # A basic periodic component
+    np.cos(x_input)   # Another basic periodic component
+])
 
-pop = Population(x, y, layers=[4, 1, 1], task='regression', pop_size=500)
+pop = Population(x_featured, y, layers=[3, 2, 1], task='regression', pop_size=1000)
 evolve = Neuroevolution(pop)
-best_net = evolve.evolution(generations=1000, verbose=True)
+best_net = evolve.evolution(generations=3000, verbose=True, crossover_method='point', crossover_kwargs={'n_points': 2},
+                            early_stopping=200, mutation_rate=0.05,  mutation_prob=0.05, k=2)
 # print("labels: ", y)
 # print("Predictions: ", best_net.output())
 # print("Population size: ", len(pop))

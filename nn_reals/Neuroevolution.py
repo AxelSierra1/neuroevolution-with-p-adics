@@ -88,22 +88,38 @@ class Neuroevolution:
         
         return np.clip(rate, min_rate, max_rate)
     
-    def evolution(self, generations=100, k=3, mutation_rate=0.15, mutation_prob=0.15, 
-                  elitism_rate=0.05, crossover_method='average', crossover_kwargs=None, 
-                  track_metrics=True, adaptive_mutation=True, early_stopping=None, 
+    @staticmethod
+    def adaptive_mutation_prob(base_prob, fitness_improvement, stagnation_count, 
+                            min_prob=0.05, max_prob=0.5):
+        """Adaptive mutation probability based on progress"""
+        if fitness_improvement > 1e-6:
+            # If we are improving, be conservative
+            prob = base_prob
+        elif stagnation_count > 10: # Start increasing after 10 gens of stagnation
+            # Increase probability as stagnation continues
+            prob = base_prob * (1.0 + 0.1 * min(stagnation_count - 10, 15))
+        else:
+            prob = base_prob
+        
+        return np.clip(prob, min_prob, max_prob)
+    
+    def evolution(self, generations=1000, k=3, mutation_rate=0.05, mutation_prob=0.02, 
+                  elitism_rate=0.01, crossover_method='uniform', crossover_kwargs=None, 
+                  track_metrics=True, adaptive_mutation=True, early_stopping=100, 
                   task='regression', verbose=True):
         
         crossover_kwargs = crossover_kwargs or {}
         metrics = EvolutionMetrics(
             save_dir='metrics', 
             metrics=['euclidean', 'manhattan', 'chebyshev', 'padic', 'qpadic'], 
-            multipliers=[1, 2, 3, 4, 5, 10, 20, 50, 100, 200, 500, 1000, 10000],
-            qpadic_bases=[2, 3, 4, 5, 6, 7, 8, 9, 10, 12, 36, 100, 1000, 10000]
+            multipliers=[1, 2, 3, 4, 5, 6, 7, 8, 9, 10], # [1, 2, 3, 4, 5, 10, 20, 50, 100, 200, 500, 1000, 10000]
+            qpadic_bases=[2, 3, 4, 5, 6, 7, 8, 9, 10] # [2, 3, 4, 5, 6, 7, 8, 9, 10, 12, 36, 100, 1000, 10000]
         ) if track_metrics else None
         
         prev_best_fitness = float('inf')
         stagnation_count = 0
         current_mutation_rate = mutation_rate
+        current_mutation_prob = mutation_prob
         elitism = max(1, int(elitism_rate * self.population.pop_size))
         
         for gen in range(generations):
@@ -122,6 +138,9 @@ class Neuroevolution:
                 current_mutation_rate = self.adaptive_mutation_rate(
                     mutation_rate, fitness_improvement, stagnation_count
                 )
+                current_mutation_prob = self.adaptive_mutation_prob(
+                    mutation_prob, fitness_improvement, stagnation_count
+                )
             
             # Elitism + offspring generation
             new_population = self.population.pop[:elitism]
@@ -131,7 +150,7 @@ class Neuroevolution:
             for _ in range(offspring_needed):
                 p1, p2 = self.select_parents(k)
                 child = self.crossover(p1, p2, method=crossover_method, **crossover_kwargs)
-                child.mutate(rate=current_mutation_rate, prob=mutation_prob)
+                child.mutate(rate=current_mutation_rate, prob=current_mutation_prob)
                 # Invalidate child's fitness cache after mutation
                 self._invalidate_fitness(child)
                 new_population.append(child)
@@ -147,8 +166,10 @@ class Neuroevolution:
                                   if net_id in elite_ids}
             
             if verbose:
+                diversity = metrics.history['euclidean_diversity'][-1]
                 print(f"Gen {gen+1}: fitness={current_best_fitness:.6f}, "
-                      f"mut_rate={current_mutation_rate:.4f}, stag={stagnation_count}")
+                      f"mut_rate={current_mutation_rate:.4f}, mut_prob={current_mutation_prob:.4f}, stag={stagnation_count}, " f"diversity={diversity:.4f}")
+                
             
             prev_best_fitness = current_best_fitness
             

@@ -67,4 +67,4 @@ def plot_diversity_heatmap(json_file, generation='final'):
 
 if __name__ == "__main__":
     # Single heatmap for final generation
-    plot_diversity_heatmap('metrics/run_1000gen.json', generation=10)
+    plot_diversity_heatmap('metrics/run_2000gen.json', generation=1999)
