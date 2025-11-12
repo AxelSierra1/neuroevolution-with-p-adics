@@ -111,9 +111,9 @@ class Neuroevolution:
         crossover_kwargs = crossover_kwargs or {}
         metrics = EvolutionMetrics(
             save_dir='metrics', 
-            metrics=['euclidean', 'manhattan', 'chebyshev', 'padic', 'qpadic'], 
-            multipliers=[1, 2, 3, 4, 5, 6, 7, 8, 9, 10], # [1, 2, 3, 4, 5, 10, 20, 50, 100, 200, 500, 1000, 10000]
-            qpadic_bases=[2, 3, 4, 5, 6, 7, 8, 9, 10] # [2, 3, 4, 5, 6, 7, 8, 9, 10, 12, 36, 100, 1000, 10000]
+            metrics=['euclidean'], # ['euclidean', 'manhattan', 'chebyshev', 'qpadic', 'padic']
+            multipliers=[3], # [3, 4, 5, 6, 7, 8, 9, 10] # [1, 2, 3, 4, 5, 10, 20, 50, 100, 200, 500, 1000, 10000]
+            qpadic_bases=[10] # [2, 3, 4, 5, 6, 7, 8, 9, 10] # [2, 3, 4, 5, 6, 7, 8, 9, 10, 12, 36, 100, 1000, 10000]
         ) if track_metrics else None
         
         prev_best_fitness = float('inf')

@@ -62,10 +62,10 @@ class EvolutionMetrics:
                         div = self._compute_qpadic_diversity(population, p, m, qpadic_norm)
                         self.history[f'qpadic_p{p}_mult{m}_diversity'].append(div['mean_distance'])
             elif metric == 'padic':
-                div = population.population_diversity(n_samples=100, metric='padic', base=2, multiplier=None, qpadic_norm=None)
+                div = population.population_diversity(n_samples=50, metric='padic', base=2, multiplier=None, qpadic_norm=None)
                 self.history[f'{metric.replace("-", "")}_diversity'].append(div['mean_distance'])
             else:
-                div = population.population_diversity(n_samples=100, metric=metric, base=None, multiplier=None, qpadic_norm=None)
+                div = population.population_diversity(n_samples=50, metric=metric, base=None, multiplier=None, qpadic_norm=None)
                 self.history[f'{metric.replace("-", "")}_diversity'].append(div['mean_distance'])
         
         # Distance to best
@@ -117,7 +117,7 @@ class EvolutionMetrics:
                 self.history[f'{metric_key}_to_best'].append(0.0)
                 self.history[f'fitness_vs_{metric_key}'].append([])
     
-    def _compute_qpadic_diversity(self, population, p, multiplier, qpadic_norm, n_samples=100):
+    def _compute_qpadic_diversity(self, population, p, multiplier, qpadic_norm, n_samples=50):
         """Compute qp-adic diversity"""
         if population.pop_size < 2:
             raise ValueError("Population must have at least 2 networks")

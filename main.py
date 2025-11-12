@@ -6,6 +6,8 @@ from nn_reals.Network import Network
 from nn_reals.Population import Population
 from nn_reals.Neuroevolution import Neuroevolution
 
+import cProfile
+
 np.random.seed(42)
 
 # Problem examples: (X: features, y: labels)
@@ -30,10 +32,14 @@ x_featured = np.hstack([
     np.cos(x_input)   # Another basic periodic component
 ])
 
-pop = Population(x_featured, y, layers=[3, 2, 1], task='regression', pop_size=1000)
+pop = Population(x_featured, y, layers=[10, 3, 1], task='regression', pop_size=1000) # [10, 3, 1]
 evolve = Neuroevolution(pop)
 best_net = evolve.evolution(generations=3000, verbose=True, crossover_method='point', crossover_kwargs={'n_points': 2},
                             early_stopping=200, mutation_rate=0.05,  mutation_prob=0.05, k=2)
+
+# if __name__ == "__main__":
+#     cProfile.run('evolve.evolution(generations=5, verbose=True, crossover_method="point", crossover_kwargs={"n_points": 2}, early_stopping=200, mutation_rate=0.05,  mutation_prob=0.05, k=2)')
+    
 # print("labels: ", y)
 # print("Predictions: ", best_net.output())
 # print("Population size: ", len(pop))

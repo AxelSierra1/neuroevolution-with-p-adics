@@ -1,6 +1,6 @@
 import numpy as np
 from fractions import Fraction
-
+from numba import njit
 from nn_reals.Network import Network
 
 class Population:
@@ -45,6 +45,7 @@ class Population:
     # quantization map
     # Round() for rounding half to even, int() for floor, np.cell() for ceiling (try Stochastic rounding?)
     @staticmethod
+    @njit
     def q_map(x, multiplier):
         return round(x * multiplier)
 
@@ -69,6 +70,7 @@ class Population:
 
     # Compute p-adic norm |x|_p for a vector for a single component |x|_p = p^(-ν_p(x))
     @staticmethod
+    @njit
     def qpadic_norm_component(x, y, base, multiplier):
         val = Population.qpadic_valuation(x, y, base, multiplier)
         if val == float('inf'):
@@ -140,7 +142,7 @@ class Population:
         return total
 
     # Calculates the average distance between pairs out of n randomly chosen individuals
-    def population_diversity(self, metric, base, multiplier, qpadic_norm, n_samples=50):
+    def population_diversity(self, metric, base, multiplier, qpadic_norm, n_samples):
         if self.pop_size < 2:
             raise ValueError("Population must have at least 2 networks")
         
