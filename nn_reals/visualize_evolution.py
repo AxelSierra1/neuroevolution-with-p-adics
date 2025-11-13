@@ -74,7 +74,7 @@ def prepare_dataframe_for_plotting(df: pd.DataFrame, metric_name: str) -> pd.Dat
     
     return plot_df
 
-def plot_evolution_metrics(df: pd.DataFrame, title: str):
+def plot_evolution_metrics(df: pd.DataFrame, title: str, metric_name: str):
     """
     Generates and displays a multi-axis plot of the evolution metrics.
     """
@@ -115,11 +115,14 @@ def plot_evolution_metrics(df: pd.DataFrame, title: str):
     fig.legend(lines1 + lines2, labels1 + labels2, loc='upper right', bbox_to_anchor=(0.88, 0.88))
 
     plt.tight_layout()
+
+    plt.savefig(f'evolution_dynamics_{metric_name}.png', dpi=300, bbox_inches='tight')
+    print(f"Heatmap saved as 'evolution_dynamics_{metric_name}.png'")
     plt.show()
 
 if __name__ == "__main__":
     # 1. CONFIGURE: Set the path to your JSON file and the metric you want to see
-    JSON_FILE_PATH = "metrics/run_3000gen_interval5.json" 
+    JSON_FILE_PATH = "metrics/run_3000gen_interval10_s42.json" 
     METRIC_TO_VISUALIZE = "euclidean"
 
     print(f"Loading evolution data from: '{JSON_FILE_PATH}'")
@@ -133,4 +136,4 @@ if __name__ == "__main__":
         
         # 4. PLOT: Generate and display the graph.
         plot_title = f'Neuroevolution Performance Over Time ({METRIC_TO_VISUALIZE.capitalize()} Metric)'
-        plot_evolution_metrics(plot_df, title=plot_title)
+        plot_evolution_metrics(plot_df, title=plot_title, metric_name=METRIC_TO_VISUALIZE)

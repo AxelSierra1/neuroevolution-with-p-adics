@@ -271,14 +271,17 @@ class EvolutionMetrics:
                 if self.history[key]:
                     print(f"  {metric.capitalize():20s} - Start: {self.history[key][0]:.4f}, End: {self.history[key][-1]:.4f}")
         
-        # Correlations
-        mid_start, mid_end = len(self.history['generation']) // 4, 3 * len(self.history['generation']) // 4
+        # Correlations - Use actual generation numbers, not indices
+        mid_start_idx = len(self.history['generation']) // 4
+        mid_end_idx = 3 * len(self.history['generation']) // 4
+        
         corrs = {f'qbadic_b{b}_mult{m}': [] for b in self.qbadic_bases for m in self.multipliers} if 'qbadic' in self.metrics else {}
         corrs.update({m: [] for m in self.metrics if m != 'qbadic'})
         
         valid_gens = 0
-        for gen in range(mid_start, mid_end):
-            c = self.get_correlations(gen)
+        for gen_idx in range(mid_start_idx, mid_end_idx):
+            actual_gen = self.history['generation'][gen_idx]  # Get the actual generation number!
+            c = self.get_correlations(actual_gen)
             if c:
                 valid_gens += 1
                 for k, v in c.items():
@@ -288,7 +291,7 @@ class EvolutionMetrics:
         
         if any(corrs.values()):
             print(f"\nAverage correlations (fitness diff vs distance):")
-            print(f"  Based on {valid_gens}/{mid_end - mid_start} valid generations")
+            print(f"  Based on {valid_gens}/{mid_end_idx - mid_start_idx} valid generations")
             for metric in self.metrics:
                 if metric == 'qbadic':
                     for b in self.qbadic_bases:
@@ -321,14 +324,17 @@ class EvolutionMetrics:
                     print(f"    Multiplier {m}: {self.history[key][-1]:.6f}")
         
         print("\nAverage correlation (mid-evolution) by (base, multiplier):")
-        mid_start, mid_end = len(self.history['generation']) // 4, 3 * len(self.history['generation']) // 4
+        # FIXED: Use actual generation numbers, not indices
+        mid_start_idx = len(self.history['generation']) // 4
+        mid_end_idx = 3 * len(self.history['generation']) // 4
         
         for b in self.qbadic_bases:
             print(f"\n  Base {b}:")
             for m in self.multipliers:
                 corrs, valid = [], 0
-                for gen in range(mid_start, mid_end):
-                    c = self.get_correlations(gen, base=b, multiplier=m)
+                for gen_idx in range(mid_start_idx, mid_end_idx):
+                    actual_gen = self.history['generation'][gen_idx]  # Get the actual generation number!
+                    c = self.get_correlations(actual_gen, base=b, multiplier=m)
                     key = f'qbadic_b{b}_mult{m}_correlation'
                     if c and key in c:
                         valid += 1

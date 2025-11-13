@@ -112,8 +112,8 @@ class Neuroevolution:
         metrics = EvolutionMetrics(
             save_dir='metrics', 
             metrics=['euclidean', 'manhattan', 'qbadic'],
-            multipliers=[2, 3, 4, 5, 6, 7, 8],
-            qbadic_bases=[2, 3, 4, 5, 6, 7, 8]
+            multipliers=[1, 2, 3, 4, 5, 10, 20, 50],
+            qbadic_bases=[2, 3, 4, 5, 6, 7, 10, 12]
         ) if track_metrics else None
         
         prev_best_fitness = float('inf')

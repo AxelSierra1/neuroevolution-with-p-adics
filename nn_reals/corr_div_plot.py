@@ -12,6 +12,7 @@ def plot_correlation_heatmap(json_file, metric='qbadic', base=None, multiplier=N
         base: For qbadic, specific base to visualize (if None, creates matrix of all bases)
         multiplier: For qbadic, specific multiplier to visualize (if None, creates matrix of all multipliers)
         generation: 'final', 'initial', 'average', or specific generation number
+                   'average' now uses middle 50% of generations (25%-75%)
     """
     # Load data
     with open(json_file, 'r') as f:
@@ -26,8 +27,13 @@ def plot_correlation_heatmap(json_file, metric='qbadic', base=None, multiplier=N
     
     # Determine which generation to use
     if generation == 'average':
-        gen_label = "Promedio de todas las generaciones"
+        # Use middle 50% of generations (25%-75%)
+        total_gens = len(metrics_data['generation'])
+        mid_start = total_gens // 4
+        mid_end = 3 * total_gens // 4
+        gen_label = f"Promedio generaciones {metrics_data['generation'][mid_start]}-{metrics_data['generation'][mid_end-1]} (medio 50%)"
         use_average = True
+        print(f"Averaging over middle 50%: generations {mid_start} to {mid_end-1} (indices)")
     elif generation == 'final':
         gen_idx = -1
         gen_label = f"Generacion {metrics_data['generation'][-1]}"
@@ -53,8 +59,9 @@ def plot_correlation_heatmap(json_file, metric='qbadic', base=None, multiplier=N
             for j, m in enumerate(multipliers):
                 key = f'qbadic_b{b}_mult{m}_correlation'
                 if use_average:
-                    # Filter out None values before averaging
-                    values = [v for v in metrics_data[key] if v is not None]
+                    # Filter out None values from middle 50% before averaging
+                    values = [metrics_data[key][idx] for idx in range(mid_start, mid_end) 
+                             if metrics_data[key][idx] is not None]
                     correlation_matrix[i, j] = np.mean(values) if values else np.nan
                 else:
                     value = metrics_data[key][gen_idx]
@@ -74,7 +81,9 @@ def plot_correlation_heatmap(json_file, metric='qbadic', base=None, multiplier=N
             raise ValueError(f"Correlation data for metric '{metric}' not found in the JSON file")
         
         if use_average:
-            values = [v for v in metrics_data[key] if v is not None]
+            # Filter out None values from middle 50% before averaging
+            values = [metrics_data[key][idx] for idx in range(mid_start, mid_end) 
+                     if metrics_data[key][idx] is not None]
             corr_value = np.mean(values) if values else np.nan
         else:
             value = metrics_data[key][gen_idx]
@@ -96,12 +105,12 @@ def plot_correlation_heatmap(json_file, metric='qbadic', base=None, multiplier=N
     
     sns.heatmap(correlation_matrix, 
                 mask=mask,
-                annot=True if correlation_matrix.size <= 20 else True,  # Show values if matrix is small
+                annot=True,
                 fmt='.3f',
                 cmap='RdYlGn',  # Red-Yellow-Green for correlation
                 center=0,  # Center the colormap at 0
-                vmin=-0.25,   # Correlation ranges from -1 to 1
-                vmax=0.25,
+                vmin=-0.5,   # Correlation ranges from -1 to 1
+                vmax=0.5,
                 xticklabels=x_labels,
                 yticklabels=y_labels,
                 cbar_kws={'label': 'Correlación'},
@@ -160,6 +169,7 @@ def plot_diversity_heatmap(json_file, generation='final'):
     if generation == 'average':
         gen_label = "Promedio de todas las generaciones"
         use_average = True
+        print(f"Averaging diversity over ALL generations (0 to {len(metrics['generation'])-1})")
     elif generation == 'final':
         gen_idx = -1
         gen_label = f"Generacion {metrics['generation'][-1]}"
@@ -180,6 +190,7 @@ def plot_diversity_heatmap(json_file, generation='final'):
         for j, mult in enumerate(multipliers):
             key = f'qbadic_b{base}_mult{mult}_diversity'
             if use_average:
+                # Average over ALL generations
                 diversity_matrix[i, j] = np.mean(metrics[key])
             else:
                 diversity_matrix[i, j] = metrics[key][gen_idx]
@@ -188,7 +199,7 @@ def plot_diversity_heatmap(json_file, generation='final'):
     fig, ax = plt.subplots(figsize=(10, 8))
     
     sns.heatmap(diversity_matrix, 
-                annot=False, 
+                annot=True, 
                 fmt='.2f',
                 cmap='YlGnBu',
                 xticklabels=multipliers,
@@ -205,7 +216,7 @@ def plot_diversity_heatmap(json_file, generation='final'):
     plt.tight_layout()
     
     # Save with appropriate filename
-    save_name = 'average' if use_average else str(generation)
+    save_name = 'average_mid50' if use_average else str(generation)
     plt.savefig(f'diversity_heatmap_{save_name}.png', dpi=300, bbox_inches='tight')
     print(f"Heatmap saved as 'diversity_heatmap_{save_name}.png'")
     plt.show()
@@ -221,19 +232,22 @@ def plot_diversity_heatmap(json_file, generation='final'):
           f"Multiplier={multipliers[np.unravel_index(diversity_matrix.argmin(), diversity_matrix.shape)[1]]}")
 
 if __name__ == "__main__":
-    json_file = 'metrics/run_3000gen_interval5.json'
+    json_file = 'metrics/run_3000gen_interval10.json'
     
     # Diversity heatmap (only for qbadic)
-    print("Generating diversity heatmap...")
+    print("Generating diversity heatmaps...")
+    plot_diversity_heatmap(json_file, generation='initial')
+    plot_diversity_heatmap(json_file, generation='final')
     plot_diversity_heatmap(json_file, generation='average')
     
     # Correlation heatmaps for different metrics
     print("\nGenerating correlation heatmaps...")
     
     # qbadic correlation matrix (all bases and multipliers)
+    plot_correlation_heatmap(json_file, metric='qbadic', generation='initial')
+    plot_correlation_heatmap(json_file, metric='qbadic', generation='final')
     plot_correlation_heatmap(json_file, metric='qbadic', generation='average')
     
     # Other metrics (will create 1x1 heatmaps showing the single correlation value)
-    # Uncomment the metrics you have tracked:
-    # plot_correlation_heatmap(json_file, metric='euclidean', generation='average')
-    # plot_correlation_heatmap(json_file, metric='padic', generation='average')
+    plot_correlation_heatmap(json_file, metric='euclidean', generation='average')
+    plot_correlation_heatmap(json_file, metric='manhattan', generation='average')
