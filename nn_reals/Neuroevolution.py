@@ -104,16 +104,16 @@ class Neuroevolution:
         return np.clip(prob, min_prob, max_prob)
     
     def evolution(self, generations=1000, k=3, mutation_rate=0.05, mutation_prob=0.02, 
-                  elitism_rate=0.01, crossover_method='uniform', crossover_kwargs=None, 
-                  track_metrics=True, adaptive_mutation=True, early_stopping=100, 
-                  task='regression', verbose=True):
+                elitism_rate=0.01, crossover_method='uniform', crossover_kwargs=None, 
+                track_metrics=True, adaptive_mutation=True, early_stopping=100, 
+                task='regression', verbose=True, metric_interval=1):  # Add this parameter
         
         crossover_kwargs = crossover_kwargs or {}
         metrics = EvolutionMetrics(
             save_dir='metrics', 
-            metrics=['euclidean'], # ['euclidean', 'manhattan', 'chebyshev', 'qpadic', 'padic']
-            multipliers=[3], # [3, 4, 5, 6, 7, 8, 9, 10] # [1, 2, 3, 4, 5, 10, 20, 50, 100, 200, 500, 1000, 10000]
-            qpadic_bases=[10] # [2, 3, 4, 5, 6, 7, 8, 9, 10] # [2, 3, 4, 5, 6, 7, 8, 9, 10, 12, 36, 100, 1000, 10000]
+            metrics=['euclidean', 'manhattan', 'qbadic'],
+            multipliers=[2, 3, 5],
+            qbadic_bases=[2, 3, 4, 5]
         ) if track_metrics else None
         
         prev_best_fitness = float('inf')
@@ -126,8 +126,10 @@ class Neuroevolution:
             # Sort population once with cached fitness
             self.population.pop.sort(key=self._get_fitness)
             
-            if metrics:
-                metrics.record_generation(gen, self.population, qpadic_norm='l1')
+            # Record metrics only every metric_interval generations
+            should_record_metrics = gen % metric_interval == 0
+            if metrics and should_record_metrics:
+                metrics.record_generation(gen, self.population, qbadic_norm='l1')
             
             current_best_fitness = self._get_fitness(self.population.pop[0])
             fitness_improvement = prev_best_fitness - current_best_fitness
@@ -151,7 +153,6 @@ class Neuroevolution:
                 p1, p2 = self.select_parents(k)
                 child = self.crossover(p1, p2, method=crossover_method, **crossover_kwargs)
                 child.mutate(rate=current_mutation_rate, prob=current_mutation_prob)
-                # Invalidate child's fitness cache after mutation
                 self._invalidate_fitness(child)
                 new_population.append(child)
             
@@ -159,17 +160,26 @@ class Neuroevolution:
             self.pop_history.append(self.population.pop[:])
             
             # Clear fitness cache for non-elite individuals
-            # Keep cache only for elite individuals
             elite_ids = {id(net) for net in self.population.pop[:elitism]}
             self._fitness_cache = {net_id: fitness 
-                                  for net_id, fitness in self._fitness_cache.items() 
-                                  if net_id in elite_ids}
+                                for net_id, fitness in self._fitness_cache.items() 
+                                if net_id in elite_ids}
             
-            if verbose:
-                diversity = metrics.history['euclidean_diversity'][-1]
-                print(f"Gen {gen+1}: fitness={current_best_fitness:.6f}, "
-                      f"mut_rate={current_mutation_rate:.4f}, mut_prob={current_mutation_prob:.4f}, stag={stagnation_count}, " f"diversity={diversity:.4f}")
-                
+            if verbose and gen % metric_interval == 0:  # Also reduce verbose output
+                if metrics and len(metrics.history['euclidean_correlation']) > 0:
+                    correlation = metrics.history['euclidean_correlation'][-1]
+                    diversity = metrics.history['euclidean_diversity'][-1]
+                    
+                    # Handle None correlation values
+                    corr_str = f"{correlation:.4f}" if correlation is not None else "N/A"
+                    
+                    print(f"Gen {gen+1}: fitness={current_best_fitness:.6f}, "
+                        f"mut_rate={current_mutation_rate:.4f}, mut_prob={current_mutation_prob:.4f}, "
+                        f"stag={stagnation_count}, diversity={diversity:.4f}, correlation={corr_str}")
+                else:
+                    print(f"Gen {gen+1}: fitness={current_best_fitness:.6f}, "
+                        f"mut_rate={current_mutation_rate:.4f}, mut_prob={current_mutation_prob:.4f}, "
+                        f"stag={stagnation_count}")
             
             prev_best_fitness = current_best_fitness
             
@@ -185,7 +195,7 @@ class Neuroevolution:
         self.population.pop.sort(key=self._get_fitness)
         
         if metrics:
-            metrics.save(filename=f'run_{generations}gen.json')
+            metrics.save(filename=f'run_{generations}gen_interval{metric_interval}.json')
             metrics.summary_report()
         
         return self.population.pop[0]

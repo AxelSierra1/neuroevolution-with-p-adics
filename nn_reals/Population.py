@@ -17,9 +17,9 @@ class Population:
     def initialize_population(self, X, Y, layers, task, pop_size):
         return [Network(X, Y, layers=layers, task=task) for _ in range(pop_size)]
     
-    # Genetic distance between two networks based on their genomes (p, multiplier, and padic_norm are only used for p-adic metric and qpadic)
+    # Genetic distance between two networks based on their genomes (p, multiplier, and padic_norm are only used for p-adic metric and qbadic)
     @staticmethod
-    def genetic_distance(net1, net2, metric, base, multiplier, qpadic_norm):
+    def genetic_distance(net1, net2, metric, base, multiplier, qbadic_norm):
         genome_diff = net1.genome - net2.genome
         
         if metric == 'euclidean':
@@ -28,15 +28,15 @@ class Population:
             return np.sum(np.abs(genome_diff))
         elif metric == 'chebyshev':
             return np.max(np.abs(genome_diff))
-        elif metric == 'qpadic':    # Quantized p-adic distance
-            if qpadic_norm == 'linf':
-                return Population.qpadic_distance_linf(genome_diff, base, multiplier)
-            elif qpadic_norm == 'l1':
-                return Population.qpadic_distance_l1(net1.genome, net2.genome, base, multiplier)
-            elif qpadic_norm == 'l2':
-                return Population.qpadic_distance_l2(net1.genome, net2.genome, base, multiplier)
+        elif metric == 'qbadic':    # Quantized p-adic distance
+            if qbadic_norm == 'linf':
+                return Population.qbadic_distance_linf(genome_diff, base, multiplier)
+            elif qbadic_norm == 'l1':
+                return Population.qbadic_distance_l1(net1.genome, net2.genome, base, multiplier)
+            elif qbadic_norm == 'l2':
+                return Population.qbadic_distance_l2(net1.genome, net2.genome, base, multiplier)
             else:
-                raise ValueError(f"Unknown p-adic norm: {qpadic_norm}")
+                raise ValueError(f"Unknown p-adic norm: {qbadic_norm}")
         elif metric == 'padic':
             return Population.padic_distance_l1(genome_diff, base)
         else:
@@ -45,13 +45,12 @@ class Population:
     # quantization map
     # Round() for rounding half to even, int() for floor, np.cell() for ceiling (try Stochastic rounding?)
     @staticmethod
-    @njit
     def q_map(x, multiplier):
         return round(x * multiplier)
 
     # Compute pseudo b-adic valuation for floats by scaling to integers.
     @staticmethod
-    def qpadic_valuation(x, y, base, multiplier):
+    def qbadic_valuation(x, y, base, multiplier):
         # Quantize the inputs
         q_x = Population.q_map(x, multiplier)
         q_y = Population.q_map(y, multiplier)
@@ -70,37 +69,36 @@ class Population:
 
     # Compute p-adic norm |x|_p for a vector for a single component |x|_p = p^(-ν_p(x))
     @staticmethod
-    @njit
-    def qpadic_norm_component(x, y, base, multiplier):
-        val = Population.qpadic_valuation(x, y, base, multiplier)
+    def qbadic_norm_component(x, y, base, multiplier):
+        val = Population.qbadic_valuation(x, y, base, multiplier)
         if val == float('inf'):
             return 0.0
         return 1 / (1 + val)
 
     # Linfinity p-adic distance: ||v||_p,inf = max_i |v_i|_p, This is the "ultrametric" approach. distance is determined by the single component with largest p-adic norm.
     @staticmethod
-    def qpadic_distance_linf(vector, base, multiplier):
-        norms = [Population.qpadic_norm_component(x, base, multiplier) for x in vector if abs(x) > 1e-10]
+    def qbadic_distance_linf(vector, base, multiplier):
+        norms = [Population.qbadic_norm_component(x, base, multiplier) for x in vector if abs(x) > 1e-10]
         if not norms:  # Zero vector
             return 0.0
         return max(norms)
     
     # L1 p-adic norm. Considers the total accumulated p-adic difference across the genome
     @staticmethod
-    def qpadic_distance_l1(net1, net2, base, multiplier):
+    def qbadic_distance_l1(net1, net2, base, multiplier):
         total = 0.0
         for i in range(len(net1)):
             if abs(net1[i]) > 1e-10 and abs(net2[i]) > 1e-10:
-                total += Population.qpadic_norm_component(net1[i], net2[i], base, multiplier)
+                total += Population.qbadic_norm_component(net1[i], net2[i], base, multiplier)
         return total
     
     # L2 p-adic norm. p-adic analogue of Euclidean distance. Weights larger p-adic differences more heavily than L1
     @staticmethod
-    def qpadic_distance_l2(net1, net2, base, multiplier):
+    def qbadic_distance_l2(net1, net2, base, multiplier):
         sum_squares = 0.0
         for i in range(len(net1)):
             if abs(net1[i]) > 1e-10 and abs(net2[i]) > 1e-10:
-                norm = Population.qpadic_norm_component(net1[i], net2[i], base, multiplier)
+                norm = Population.qbadic_norm_component(net1[i], net2[i], base, multiplier)
                 sum_squares += norm ** 2
         return np.sqrt(sum_squares)
     
@@ -142,7 +140,7 @@ class Population:
         return total
 
     # Calculates the average distance between pairs out of n randomly chosen individuals
-    def population_diversity(self, metric, base, multiplier, qpadic_norm, n_samples):
+    def population_diversity(self, metric, base, multiplier, qbadic_norm, n_samples):
         if self.pop_size < 2:
             raise ValueError("Population must have at least 2 networks")
         
@@ -159,7 +157,7 @@ class Population:
             net1, net2 = self.pop[idx1], self.pop[idx2]
             
             # Compute distance
-            dist = Population.genetic_distance(net1, net2, metric, base, multiplier, qpadic_norm)
+            dist = Population.genetic_distance(net1, net2, metric, base, multiplier, qbadic_norm)
             distances.append(dist)
         
         distances = np.array(distances)
@@ -183,13 +181,13 @@ class Population:
         return sorted_pop[:n]
     
     # returns a distance matrix
-    def all_pairwise_distances(self, metric, base, multiplier, qpadic_norm):
+    def all_pairwise_distances(self, metric, base, multiplier, qbadic_norm):
         n = self.pop_size
         distances = np.zeros((n, n))
         
         for i in range(n):
             for j in range(i + 1, n):
-                dist = Population.genetic_distance(self.pop[i], self.pop[j], metric, base, multiplier, qpadic_norm)
+                dist = Population.genetic_distance(self.pop[i], self.pop[j], metric, base, multiplier, qbadic_norm)
                 distances[i, j] = dist
                 distances[j, i] = dist
         

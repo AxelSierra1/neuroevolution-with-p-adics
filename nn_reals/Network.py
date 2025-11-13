@@ -119,3 +119,22 @@ class Network:
         mask = np.random.rand(self.genome.shape[0]) < prob
         
         self.genome += noise * mask
+
+    # The predictions from the nn for a given input
+    def predict(self, X_input):
+        weights, biases = self.decode_genome()
+        current_input = X_input
+        for i in range(len(weights)): # Computes the layer operations in a loop until it reaches the output layer
+            z = np.dot(current_input, weights[i]) + biases[i]
+
+            # Apply activation based on layer type
+            if i < len(weights) - 1:
+                # current_input = self._sigmoid(z) # Hidden layers always use sigmoid
+                current_input = self._tanh(z) 
+            else: # Output layer: depends on task
+                if self.task == 'classification': # For classification: sigmoid for binary
+                    current_input = self._sigmoid(z)
+                else: # For regression: linear activation (no activation function)
+                    current_input = z
+
+        return current_input # Returns a matrix containing the outputs for the given X_input

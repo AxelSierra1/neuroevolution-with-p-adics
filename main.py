@@ -32,10 +32,10 @@ x_featured = np.hstack([
     np.cos(x_input)   # Another basic periodic component
 ])
 
-pop = Population(x_featured, y, layers=[10, 3, 1], task='regression', pop_size=1000) # [10, 3, 1]
+pop = Population(x_featured, y, layers=[20, 18, 1], task='regression', pop_size=1000) # [10, 3, 1]
 evolve = Neuroevolution(pop)
 best_net = evolve.evolution(generations=3000, verbose=True, crossover_method='point', crossover_kwargs={'n_points': 2},
-                            early_stopping=200, mutation_rate=0.05,  mutation_prob=0.05, k=2)
+                            early_stopping=200, mutation_rate=0.03,  mutation_prob=0.03, k=3, metric_interval=5)
 
 # if __name__ == "__main__":
 #     cProfile.run('evolve.evolution(generations=5, verbose=True, crossover_method="point", crossover_kwargs={"n_points": 2}, early_stopping=200, mutation_rate=0.05,  mutation_prob=0.05, k=2)')
@@ -60,3 +60,27 @@ best_net = evolve.evolution(generations=3000, verbose=True, crossover_method='po
     # Snapshot mode: Visualize a single generation as a static tree. Simplest to start with.
     # Animated mode: Show trees evolving over time. This reveals how clusters form, merge, and diverge—much richer but more complex to implement and render.
     # Lineage mode: Track individuals across generations and show which ancestral cluster they belong to. Adds genealogical information back in.
+
+    # Generate predictions from the best network
+
+predictions = best_net.predict(x_featured)
+
+# Plot the results
+plt.figure(figsize=(10, 6))
+
+# Plot the original function using the original x values
+plt.plot(x_input, y, label='Original Function', color='blue', linewidth=2)
+
+# Plot the neural network's approximation
+plt.plot(x_input, predictions, label='NN Approximation', color='red', linestyle='--', linewidth=2)
+
+# Optional: Plot the training data points to see the fit
+plt.scatter(x_input, y, label='Training Data', color='black', s=10)
+
+# Add titles and labels for clarity
+plt.title('Function Approximation using Neuroevolution')
+plt.xlabel('Input (x)')
+plt.ylabel('Output (y)')
+plt.legend()
+plt.grid(True)
+plt.show()
