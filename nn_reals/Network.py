@@ -138,3 +138,40 @@ class Network:
                     current_input = z
 
         return current_input # Returns a matrix containing the outputs for the given X_input
+    
+    def save(self, filename):
+        """
+        Saves the network's genome, layers, and task to a compressed .npz file.
+        This is an instance method, called on an existing network object.
+        """
+        np.savez_compressed(
+            filename,
+            genome=self.genome,
+            layers=np.array(self.layers, dtype=object), # Save layers as an object array
+            task=self.task
+        )
+        print(f"Network saved to {filename}")
+
+    @classmethod
+    def load(cls, filename):
+        """
+        Loads a network from a .npz file.
+        This is a class method, called on the class itself (e.g., Network.load()).
+        It acts as an alternative constructor.
+        """
+        data = np.load(filename, allow_pickle=True)
+        genome = data['genome']
+        layers = data['layers'].tolist() # Convert back from numpy array to list
+        task = str(data['task']) # Ensure task is a string
+
+        # The __init__ method requires X and Y, but they are not needed for
+        # making predictions with a loaded model. We can pass dummy values.
+        # The number of input features is the first element in the layers list.
+        num_input_features = layers[0]
+        dummy_X = np.empty((1, num_input_features))
+        dummy_Y = np.empty((1, 1))
+        
+        # Create a new instance of the class using the loaded data
+        loaded_net = cls(dummy_X, dummy_Y, layers=layers[1:], genome=genome, task=task)
+        print(f"Network loaded from {filename}")
+        return loaded_net

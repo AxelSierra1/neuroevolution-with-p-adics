@@ -37,6 +37,12 @@ evolve = Neuroevolution(pop)
 best_net = evolve.evolution(generations=3000, verbose=True, crossover_method='point', crossover_kwargs={'n_points': 2},
                             early_stopping=200, mutation_rate=0.03,  mutation_prob=0.03, k=3, metric_interval=5)
 
+# Save the best network
+best_net.save('best_function_approximator.npz')
+
+# Load the network
+loaded_model = Network.load('best_function_approximator.npz')
+
 # if __name__ == "__main__":
 #     cProfile.run('evolve.evolution(generations=5, verbose=True, crossover_method="point", crossover_kwargs={"n_points": 2}, early_stopping=200, mutation_rate=0.05,  mutation_prob=0.05, k=2)')
     
@@ -61,9 +67,9 @@ best_net = evolve.evolution(generations=3000, verbose=True, crossover_method='po
     # Animated mode: Show trees evolving over time. This reveals how clusters form, merge, and diverge—much richer but more complex to implement and render.
     # Lineage mode: Track individuals across generations and show which ancestral cluster they belong to. Adds genealogical information back in.
 
-    # Generate predictions from the best network
-
+# Generate predictions
 predictions = best_net.predict(x_featured)
+# predictions = loaded_model.predict(x_featured)
 
 # Plot the results
 plt.figure(figsize=(10, 6))
@@ -83,4 +89,8 @@ plt.xlabel('Input (x)')
 plt.ylabel('Output (y)')
 plt.legend()
 plt.grid(True)
+
+plt.savefig('function_approximation_plot.png', dpi=300) # dpi for higher resolution
+print("Plot saved to function_approximation_plot.png")
+
 plt.show()

@@ -117,10 +117,6 @@ def plot_evolution_metrics(df: pd.DataFrame, title: str):
     plt.tight_layout()
     plt.show()
 
-# ==============================================================================
-# --- MAIN SCRIPT ---
-# ==============================================================================
-
 if __name__ == "__main__":
     # 1. CONFIGURE: Set the path to your JSON file and the metric you want to see
     JSON_FILE_PATH = "metrics/run_3000gen_interval5.json" 
