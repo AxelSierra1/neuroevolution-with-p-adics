@@ -105,16 +105,25 @@ class Neuroevolution:
     
     def evolution(self, generations=1000, k=3, mutation_rate=0.05, mutation_prob=0.02, 
                 elitism_rate=0.01, crossover_method='uniform', crossover_kwargs=None, 
-                track_metrics=True, adaptive_mutation=True, early_stopping=100, 
-                task='regression', verbose=True, metric_interval=1):  # Add this parameter
+                track_metrics=True, metrics=None, multipliers=None, qbadic_bases=None, 
+                qbadic_norm='l1', track_matrices=True, fdc_correlation_type='pearson', 
+                adaptive_mutation=True, early_stopping=100, task='regression', verbose=True):
         
         crossover_kwargs = crossover_kwargs or {}
-        metrics = EvolutionMetrics(
-            save_dir='metrics', 
-            metrics=['euclidean', 'manhattan', 'qbadic'],
-            multipliers=[1, 2, 3, 4, 5, 10, 20, 50],
-            qbadic_bases=[2, 3, 4, 5, 6, 7, 10, 12]
-        ) if track_metrics else None
+        
+        ev_metrics = None
+        if track_metrics:
+            ev_metrics = EvolutionMetrics(
+                metrics=metrics, 
+                multipliers=multipliers, 
+                qbadic_bases=qbadic_bases, 
+                qbadic_norm=qbadic_norm,
+                track_matrices=track_matrices,
+                fdc_correlation_type=fdc_correlation_type,
+                save_dir='metrics'
+            )
+        
+        self.ev_metrics = ev_metrics
         
         prev_best_fitness = float('inf')
         stagnation_count = 0
@@ -126,10 +135,9 @@ class Neuroevolution:
             # Sort population once with cached fitness
             self.population.pop.sort(key=self._get_fitness)
             
-            # Record metrics only every metric_interval generations
-            should_record_metrics = gen % metric_interval == 0
-            if metrics and should_record_metrics:
-                metrics.record_generation(gen, self.population, qbadic_norm='l1')
+            # Record metrics
+            if ev_metrics:
+                ev_metrics.record(gen, self.population)
             
             current_best_fitness = self._get_fitness(self.population.pop[0])
             fitness_improvement = prev_best_fitness - current_best_fitness
@@ -162,24 +170,13 @@ class Neuroevolution:
             # Clear fitness cache for non-elite individuals
             elite_ids = {id(net) for net in self.population.pop[:elitism]}
             self._fitness_cache = {net_id: fitness 
-                                for net_id, fitness in self._fitness_cache.items() 
-                                if net_id in elite_ids}
+                                   for net_id, fitness in self._fitness_cache.items() 
+                                   if net_id in elite_ids}
             
-            if verbose and gen % metric_interval == 0:  # Also reduce verbose output
-                if metrics and len(metrics.history['euclidean_correlation']) > 0:
-                    correlation = metrics.history['euclidean_correlation'][-1]
-                    diversity = metrics.history['euclidean_diversity'][-1]
-                    
-                    # Handle None correlation values
-                    corr_str = f"{correlation:.4f}" if correlation is not None else "N/A"
-                    
-                    print(f"Gen {gen+1}: fitness={current_best_fitness:.6f}, "
-                        f"mut_rate={current_mutation_rate:.4f}, mut_prob={current_mutation_prob:.4f}, "
-                        f"stag={stagnation_count}, diversity={diversity:.4f}, correlation={corr_str}")
-                else:
-                    print(f"Gen {gen+1}: fitness={current_best_fitness:.6f}, "
-                        f"mut_rate={current_mutation_rate:.4f}, mut_prob={current_mutation_prob:.4f}, "
-                        f"stag={stagnation_count}")
+            if verbose and gen % 10 == 0:
+                print(f"Gen {gen}: fitness={current_best_fitness:.6f}, "
+                      f"mut_rate={current_mutation_rate:.4f}, mut_prob={current_mutation_prob:.4f}, "
+                      f"stag={stagnation_count}")
             
             prev_best_fitness = current_best_fitness
             
@@ -188,14 +185,15 @@ class Neuroevolution:
                 print("Converged!")
                 break
             if early_stopping and stagnation_count >= early_stopping:
-                print(f"Early stopping at generation {gen+1}")
+                print(f"Early stopping at generation {gen}")
                 break
         
         # Ensure population is sorted before returning best
         self.population.pop.sort(key=self._get_fitness)
         
-        if metrics:
-            metrics.save(filename=f'run_{generations}gen_interval{metric_interval}.json')
-            metrics.summary_report()
-        
+        if ev_metrics:
+            ev_metrics.record(gen, self.population, is_final=True)
+            ev_metrics.save()
+            print("Evolution metrics saved.")
+            
         return self.population.pop[0]

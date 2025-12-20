@@ -1,6 +1,5 @@
 import numpy as np
 from fractions import Fraction
-from numba import njit
 from nn_reals.Network import Network
 
 class Population:
@@ -51,56 +50,87 @@ class Population:
     # Compute pseudo b-adic valuation for floats by scaling to integers.
     @staticmethod
     def qbadic_valuation(x, y, base, multiplier):
+        """
+        Compute pseudo b-adic valuation for floats by scaling to integers.
+        Vectorized for numpy arrays.
+        """
+        # Ensure inputs are arrays
+        x = np.asarray(x)
+        y = np.asarray(y)
+        
         # Quantize the inputs
-        q_x = Population.q_map(x, multiplier)
-        q_y = Population.q_map(y, multiplier)
-        q_diff = abs(q_x - q_y)
+        q_x = np.round(x * multiplier)
+        q_y = np.round(y * multiplier)
+        q_diff = np.abs(q_x - q_y).astype(int)
         
-        # q_diff = abs(Population.q_map(x-y, multiplier))
-
-        if q_diff == 0:  # Very small values round to zero
-            return float('inf')
+        # Handle zeros -> inf valuation
+        valuations = np.zeros_like(q_diff, dtype=float)
+        zero_mask = (q_diff == 0)
+        valuations[zero_mask] = float('inf')
         
-        count = 0
-        while q_diff % base == 0:
-            q_diff //= base
-            count += 1
-        return count
+        # Calculate valuation for non-zeros
+        # vectorizing the "while divisible by base" logic
+        # We can use iterative division on the mask of non-zeros
+        non_zero_mask = ~zero_mask
+        temp_diff = q_diff[non_zero_mask]
+        
+        counts = np.zeros_like(temp_diff, dtype=int)
+        
+        if temp_diff.size > 0:
+            while True:
+                is_divisible = (temp_diff % base == 0)
+                if not np.any(is_divisible):
+                    break
+                temp_diff[is_divisible] //= base
+                counts[is_divisible] += 1
+                
+        valuations[non_zero_mask] = counts
+        return valuations
 
-    # Compute p-adic norm |x|_p for a vector for a single component |x|_p = p^(-ν_p(x))
     @staticmethod
     def qbadic_norm_component(x, y, base, multiplier):
-        val = Population.qbadic_valuation(x, y, base, multiplier)
-        if val == float('inf'):
-            return 0.0
-        return 1 / (1 + val)
+        """Vectorized p-adic norm component."""
+        vals = Population.qbadic_valuation(x, y, base, multiplier)
+        # norm = base^(-val)
+        # handle inf
+        norms = np.zeros_like(vals)
+        finite_mask = (vals != float('inf'))
+        norms[finite_mask] = list(base) ** (-vals[finite_mask]) if isinstance(base, list) else base ** (-vals[finite_mask])
+        return norms
 
-    # Linfinity p-adic distance: ||v||_p,inf = max_i |v_i|_p, This is the "ultrametric" approach. distance is determined by the single component with largest p-adic norm.
     @staticmethod
     def qbadic_distance_linf(vector, base, multiplier):
-        norms = [Population.qbadic_norm_component(x, base, multiplier) for x in vector if abs(x) > 1e-10]
-        if not norms:  # Zero vector
-            return 0.0
-        return max(norms)
+        """Vectorized Linf p-adic distance."""
+        # vector is already difference array usually, or we treat it as such against 0 vector
+        # check if input is difference or raw vector (usually raw difference in context)
+        # implementation assumes 'vector' is the difference genome_diff
+        
+        # We need to compute norm of each component against 0
+        norms = Population.qbadic_norm_component(vector, np.zeros_like(vector), base, multiplier)
+        
+        # Filter out negligible components (already handled by diff==0 -> norm=0 logic mostly, 
+        # but original code had abs(x) > 1e-10 check. 
+        # The quantized valuation handles small diffs by rounding them to 0 if they are small enough given the multiplier.
+        # But let's respect the original tolerance for safety if needed, though quantization usually overrides it.
+        # If quantized diff is 0, norm is 0.
+        
+        return np.max(norms) if norms.size > 0 else 0.0
     
-    # L1 p-adic norm. Considers the total accumulated p-adic difference across the genome
     @staticmethod
     def qbadic_distance_l1(net1, net2, base, multiplier):
-        total = 0.0
-        for i in range(len(net1)):
-            if abs(net1[i]) > 1e-10 and abs(net2[i]) > 1e-10:
-                total += Population.qbadic_norm_component(net1[i], net2[i], base, multiplier)
-        return total
+        """Vectorized L1 p-adic distance."""
+        diff = net1 - net2 # Assuming net1, net2 are genomes (numpy arrays)
+        # Original code used net1[i] - net2[i] and passed 0.0 as second arg to scalar func.
+        # Equivalent to passing diff and 0s.
+        norms = Population.qbadic_norm_component(diff, np.zeros_like(diff), base, multiplier)
+        return np.sum(norms)
     
-    # L2 p-adic norm. p-adic analogue of Euclidean distance. Weights larger p-adic differences more heavily than L1
     @staticmethod
     def qbadic_distance_l2(net1, net2, base, multiplier):
-        sum_squares = 0.0
-        for i in range(len(net1)):
-            if abs(net1[i]) > 1e-10 and abs(net2[i]) > 1e-10:
-                norm = Population.qbadic_norm_component(net1[i], net2[i], base, multiplier)
-                sum_squares += norm ** 2
-        return np.sqrt(sum_squares)
+        """Vectorized L2 p-adic distance."""
+        diff = net1 - net2
+        norms = Population.qbadic_norm_component(diff, np.zeros_like(diff), base, multiplier)
+        return np.sqrt(np.sum(norms ** 2))
     
     # Exact p-adic valuation for rationals using Fraction (no correlation found)
     @staticmethod

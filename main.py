@@ -1,4 +1,3 @@
-# from sage.all import * # For later use
 import numpy as np
 import matplotlib.pyplot as plt
 import cProfile
@@ -6,7 +5,7 @@ from nn_reals.Network import Network
 from nn_reals.Population import Population
 from nn_reals.Neuroevolution import Neuroevolution
 
-np.random.seed(42)
+np.random.seed(45)
 
 # Problem examples: (X: features, y: labels)
 # XOR problem
@@ -30,10 +29,65 @@ x_featured = np.hstack([
     np.cos(x_input)   # Another basic periodic component
 ])
 
-pop = Population(x_featured, y, layers=[20, 18, 1], task='regression', pop_size=1000) # [10, 3, 1]
+metrics_small = ['euclidean', 'manhattan', 'qbadic']
+multipliers_small = [10]
+bases_small = [2]
+
+metrics_large=['euclidean', 'manhattan', 'qbadic']
+multipliers_large=[0.1, 0.5, 1, 2, 3, 4, 5, 10, 20, 50]
+bases_large=[2, 3, 4, 5, 6, 7, 10, 12]
+
+pop = Population(x_featured, y, layers=[20, 18, 1], task='regression', pop_size=500) # [10, 3, 1]
 evolve = Neuroevolution(pop)
 best_net = evolve.evolution(generations=3000, verbose=True, crossover_method='point', crossover_kwargs={'n_points': 2},
-                            early_stopping=200, mutation_rate=0.03,  mutation_prob=0.03, k=3, metric_interval=10)
+                            early_stopping=200, mutation_rate=0.03, track_metrics=True, track_matrices=False, qbadic_norm='l1',
+                            mutation_prob=0.03, k=3, metrics=metrics_large, multipliers=multipliers_large, qbadic_bases=bases_large,
+                            fdc_correlation_type='spearman')
+
+# --- RESULTS ANALYSIS ---
+if evolve.ev_metrics:
+    # Define logger to write to both console and file
+    results_file = "results_summary.txt"
+    with open(results_file, "w") as f:
+        def log(message):
+            print(message)
+            f.write(message + "\n")
+
+        log("\n" + "="*50)
+        log("EVOLUTION RESULTS ANALYSIS")
+        log("="*50)
+        
+        # 1. Diversity & FDC Summary
+        summary = evolve.ev_metrics.get_results_summary()
+        
+        header = f"\n{'Metric Configuration':<30} | {'Start Div':<10} | {'End Div':<10} | {'Mid 50% Div':<12} | {'Avg FDC':<10} | {'Avg Samples':<11}"
+        log(header)
+        log("-" * len(header))
+        
+        for name, stats in summary.items():
+            sample_size = stats.get('avg_fdc_sample_size', 0)
+            log(f"{name:<30} | {stats['start_diversity']:^10.4f} | {stats['end_diversity']:^10.4f} | "
+                f"{stats['mid_50_diversity']:^12.4f} | {stats['avg_fdc']:^10.4f} | {sample_size:^11.1f}")
+
+        # 2. Orthogonality (Metric-Metric Correlation)
+        log("\n" + "-"*50)
+        log("ORTHOGONALITY SCORE (Metric Independence)")
+        log("-"*50)
+        log("Correlation between distance matrices (lower = more independent/orthogonal)\n")
+        
+        # Calculate orthogonality with Pearson (linear relationship) and Spearman (rank relationship)
+        ortho_results = evolve.ev_metrics.calculate_orthogonality(
+            evolve.population,
+            #metric_pairs=[('euclidean', 'manhattan'), ('euclidean', 'qbadic_b2_m10'), ('manhattan', 'qbadic_b2_m10')],
+            correlation_type='spearman',
+            n_samples=100
+        )
+        
+        for pair, score in ortho_results.items():
+            log(f"{pair:<40} : {score:.4f}")
+        log("="*50 + "\n")
+        
+    print(f"Results summary saved to {results_file}")
 
 # Save the best network
 best_net.save('best_function_approximator.npz')

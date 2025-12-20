@@ -4,344 +4,325 @@ from pathlib import Path
 from scipy.stats import pearsonr, spearmanr, kendalltau
 
 class EvolutionMetrics:
-    def __init__(self, save_dir='metrics', metrics=None, qbadic_bases=None, multipliers=None):
+    def __init__(self, metrics=None, multipliers=None, qbadic_bases=None, qbadic_norm='l1', 
+                 track_matrices=True, fdc_correlation_type='pearson', save_dir='metrics'):
         self.save_dir = Path(save_dir)
-        self.save_dir.mkdir(exist_ok=True)
+        self.save_dir.mkdir(exist_ok=True, parents=True)
+        self.metrics = metrics if metrics is not None else ['euclidean', 'qbadic']
+        self.multipliers = multipliers if multipliers is not None else [10]
+        self.qbadic_bases = qbadic_bases if qbadic_bases is not None else [2]
+        self.qbadic_norm = qbadic_norm
+        self.track_matrices = track_matrices
+        self.fdc_correlation_type = fdc_correlation_type
+
+        # Construct configurations to track
+        self.tracked_configs = []
+        for metric in self.metrics:
+            if metric == 'qbadic':
+                for base in self.qbadic_bases:
+                    for mult in self.multipliers:
+                        name = f'qbadic_b{base}_m{mult}'
+                        self.tracked_configs.append({
+                            'name': name, 'metric': 'qbadic', 
+                            'base': base, 'multiplier': mult, 'qbadic_norm': self.qbadic_norm
+                        })
+            elif metric == 'padic':
+                for base in self.qbadic_bases:
+                    name = f'padic_b{base}'
+                    self.tracked_configs.append({
+                        'name': name, 'metric': 'padic', 
+                        'base': base, 'multiplier': None, 'qbadic_norm': None
+                    })
+            else:
+                self.tracked_configs.append({
+                    'name': metric, 'metric': metric, 
+                    'base': None, 'multiplier': None, 'qbadic_norm': None
+                })
         
-        self.metrics = metrics or ['euclidean', 'qbadic']
-        self.qbadic_bases = qbadic_bases or [2, 3, 5, 7]
-        self.multipliers = multipliers or [2, 3, 4, 5]
-        self.qbadic_config = {}
-        
-        # Initialize history
+        # Initialize History
         self.history = {
-            'generation': [], 'best_fitness': [], 
-            'mean_fitness': [], 'worst_fitness': []
+            'generation': [],
+            'best_fitness': [],
+            'mean_fitness': [],
+            'worst_fitness': [],
+            'fdc_sample_size': [],
         }
         
-        # Add metric-specific keys
-        for metric in self.metrics:
-            if metric == 'qbadic':
-                for b in self.qbadic_bases:
-                    for m in self.multipliers:
-                        prefix = f'qbadic_b{b}_mult{m}'
-                        for suffix in ['diversity', 'to_best', '']:
-                            key = f'{prefix}_{suffix}' if suffix else f'fitness_vs_{prefix}'
-                            self.history[key] = []
-                        self.history[f'{prefix}_correlation'] = [] # Key to store correlation time-series
-            else:
-                key = metric.replace('-', '')
-                for suffix in ['diversity', 'to_best', '']:
-                    self.history[f'{key}_{suffix}' if suffix else f'fitness_vs_{key}'] = []
-                self.history[f'{key}_correlation'] = []
-    
-    def record_generation(self, generation, population, qbadic_norm):
-        """Record metrics for a generation"""
+        # Add dynamic keys
+        for config in self.tracked_configs:
+            self.history[f"diversity_{config['name']}"] = []
+            self.history[f"correlation_{config['name']}"] = []
+        
+        self.SNAPSHOT_GENS = [0, 100, 500, 1000]
+
+    def record(self, generation, population, is_final=False):
+        """
+        Record metrics based on the generation tier.
+        """
         from nn_reals.Population import Population
         
-        # Store config on first call
-        if 'qbadic' in self.metrics and not self.qbadic_config:
-            self.qbadic_config = {
-                'bases': self.qbadic_bases,
-                'multipliers': self.multipliers,
-                'norm': qbadic_norm
-            }
-        
+        # --- Tier 1: Cheap Scalars (Every Generation) ---
         fitnesses = population.get_fitnesses()
-        best_net = population.get_best_networks(n=1)
-        
-        # Basic stats
         self.history['generation'].append(generation)
-        self.history['best_fitness'].append(np.min(fitnesses))
-        self.history['mean_fitness'].append(np.mean(fitnesses))
-        self.history['worst_fitness'].append(np.max(fitnesses))
+        self.history['best_fitness'].append(float(np.min(fitnesses)))
+        self.history['mean_fitness'].append(float(np.mean(fitnesses)))
+        self.history['worst_fitness'].append(float(np.max(fitnesses)))
         
-        # Diversity for all metrics
-        for metric in self.metrics:
-            if metric == 'qbadic':
-                for b in self.qbadic_bases:
-                    for m in self.multipliers:
-                        div = self._compute_qbadic_diversity(population, b, m, qbadic_norm)
-                        self.history[f'qbadic_b{b}_mult{m}_diversity'].append(div['mean_distance'])
-            elif metric == 'padic':
-                div = population.population_diversity(n_samples=100, metric='padic', base=2, multiplier=None, qbadic_norm=None)
-                self.history[f'{metric.replace("-", "")}_diversity'].append(div['mean_distance'])
-            else:
-                div = population.population_diversity(n_samples=100, metric=metric, base=None, multiplier=None, qbadic_norm=None)
-                self.history[f'{metric.replace("-", "")}_diversity'].append(div['mean_distance'])
+        # --- Tier 2: Trend Interval (Every 10 Generations OR Final) ---
+        if generation % 10 == 0 or is_final:
+            for config in self.tracked_configs:
+                # Diversity
+                div = population.population_diversity(
+                    metric=config['metric'], 
+                    base=config['base'], 
+                    multiplier=config['multiplier'], 
+                    qbadic_norm=config['qbadic_norm'], 
+                    n_samples=100
+                )
+                self.history[f"diversity_{config['name']}"].append(div['mean_distance'])
+            
+            # Fitness-Distance Correlation (sampled)
+            self._record_correlation(population)
+        else:
+            # Keep lists aligned
+            self.history['fdc_sample_size'].append(None)
+            for config in self.tracked_configs:
+                self.history[f"diversity_{config['name']}"].append(None)
+                self.history[f"correlation_{config['name']}"].append(None)
+
+        # --- Tier 3: Snapshots (Specific Generations) ---
+        if (generation in self.SNAPSHOT_GENS or is_final) and self.track_matrices:
+            print(f" >> Creating Snapshot for Generation {generation}...")
+            
+            snapshot_data = {
+                'generation': generation,
+                'fitnesses': fitnesses
+            }
+            
+            # Compute Full NxN Matrices for all tracked metrics
+            for config in self.tracked_configs:
+                matrix = population.all_pairwise_distances(
+                    metric=config['metric'], 
+                    base=config['base'], 
+                    multiplier=config['multiplier'], 
+                    qbadic_norm=config['qbadic_norm']
+                )
+                snapshot_data[f"matrix_{config['name']}"] = matrix
+            
+            # Save Compressed
+            filename = self.save_dir / f'snapshot_gen_{generation}.npz'
+            np.savez_compressed(filename, **snapshot_data)
+            print(f" >> Snapshot saved: {filename}")
+
+    def _record_correlation(self, population):
+        """Helper to calculate fitness-distance correlation on a subset."""
+        from nn_reals.Population import Population
         
-        # Distance to best
+        best_net = population.get_best_networks(n=1)
+        best_fitness = best_net.fitness()
+        
+        # Sample subset
         sample_size = min(50, population.pop_size)
-        sample_indices = np.random.choice(population.pop_size, sample_size, replace=False)
-        
-        distances = {m: [] for m in self.metrics if m != 'qbadic'}
-        if 'qbadic' in self.metrics:
-            distances.update({f'qbadic_b{b}_mult{m}': [] 
-                            for b in self.qbadic_bases for m in self.multipliers})
+        indices = np.random.choice(population.pop_size, sample_size, replace=False)
         
         fitness_diffs = []
+        # Prepare lists for all configs
+        dist_lists = {config['name']: [] for config in self.tracked_configs}
         
-        # Get best network index for proper comparison
-        best_idx = np.argmin(fitnesses)
+        for idx in indices:
+            net = population[idx]
+            if net is best_net:
+                continue
+            
+            fitness_diffs.append(abs(net.fitness() - best_fitness))
+            
+            for config in self.tracked_configs:
+                d = Population.genetic_distance(
+                    best_net, net, 
+                    config['metric'], config['base'], config['multiplier'], config['qbadic_norm']
+                )
+                dist_lists[config['name']].append(d)
         
-        for idx in sample_indices:
-            # Skip if this is the best network
-            if idx == best_idx:
+        # Compute Correlation
+        def get_corr(dist_array):
+            if len(dist_array) < 2: return 0.0
+            if len(set(dist_array)) < 2: return 0.0 
+            if len(set(fitness_diffs)) < 2: return 0.0
+            
+            if self.fdc_correlation_type == 'spearman':
+                val, _ = spearmanr(fitness_diffs, dist_array)
+            elif self.fdc_correlation_type == 'kendall':
+                val, _ = kendalltau(fitness_diffs, dist_array)
+            else: # Default strict Pearson
+                val, _ = pearsonr(fitness_diffs, dist_array)
+                
+            return 0.0 if np.isnan(val) else val
+
+        for config in self.tracked_configs:
+            corr = get_corr(dist_lists[config['name']])
+            self.history[f"correlation_{config['name']}"].append(corr)
+
+        self.history['fdc_sample_size'].append(len(indices))
+
+    def get_results_summary(self):
+        """
+        Calculate and return summary statistics: 
+        Start/End diversity, Middle 50% Avg Diversity, Avg FDC.
+        """
+        summary = {}
+        generations = self.history['generation']
+        if not generations:
+            return summary
+            
+        max_gen = generations[-1]
+        mid_start = max_gen * 0.25
+        mid_end = max_gen * 0.75
+        
+        mid_indices = [i for i, g in enumerate(generations) if mid_start <= g <= mid_end]
+        
+        for config in self.tracked_configs:
+            name = config['name']
+            
+            # Diversity
+            div_key = f"diversity_{name}"
+            div_vals = self.history[div_key]
+            
+            # Filter None
+            valid_divs = [(i, v) for i, v in enumerate(div_vals) if v is not None]
+            
+            if not valid_divs:
                 continue
                 
-            net = population[idx]
-            fitness_diffs.append(abs(net.fitness() - best_net.fitness()))
+            start_div = valid_divs[0][1]
+            end_div = valid_divs[-1][1]
             
-            for metric in self.metrics:
-                if metric == 'qbadic':
-                    for b in self.qbadic_bases:
-                        for m in self.multipliers:
-                            dist = Population.genetic_distance(
-                                best_net, net, metric='qbadic',
-                                base=b, multiplier=m, qbadic_norm=qbadic_norm
-                            )
-                            distances[f'qbadic_b{b}_mult{m}'].append(dist)
-                elif metric == 'padic':
-                    dist = Population.genetic_distance(best_net, net, metric='padic', base=2, multiplier=None, qbadic_norm=None)
-                    distances[metric].append(dist)
-                else:
-                    dist = Population.genetic_distance(best_net, net, metric=metric, base=None, multiplier=None, qbadic_norm=None)
-                    distances[metric].append(dist)
+            # Middle 50%
+            mid_vals = [div_vals[i] for i in mid_indices if div_vals[i] is not None]
+            mid_avg = np.mean(mid_vals) if mid_vals else 0.0
+            
+            # FDC
+            corr_key = f"correlation_{name}"
+            corr_vals = [v for v in self.history[corr_key] if v is not None]
+            avg_fdc = np.mean(corr_vals) if corr_vals else 0.0
+            
+            # Avg Sample Size
+            sample_size_key = "fdc_sample_size"
+            sample_size_vals = [v for v in self.history.get(sample_size_key, []) if v is not None]
+            avg_sample_size = np.mean(sample_size_vals) if sample_size_vals else 0.0
+
+            summary[name] = {
+                'start_diversity': start_div,
+                'end_diversity': end_div,
+                'mid_50_diversity': mid_avg,
+                'avg_fdc': avg_fdc,
+                'avg_fdc_sample_size': avg_sample_size
+            }
+            
+        return summary
+
+    def calculate_orthogonality(self, population, metric_pairs=None, correlation_type='pearson', n_samples=100):
+        """
+        Calculate correlation between distance matrices of different metrics.
+        Higher correlation = metrics provide similar information (low orthogonality).
+        Lower correlation = metrics track different things (high orthogonality).
         
-        # Store means and correlations
-        for key, dists in distances.items():
-            metric_key = key if 'qbadic' in key else key.replace('-', '')
-            if dists:  # Only compute if we have distance data
-                self.history[f'{metric_key}_to_best'].append(np.mean(dists))
-                self.history[f'fitness_vs_{metric_key}'].append(list(zip(fitness_diffs, dists)))
-            else:
-                # Handle edge case where best network was the only one sampled
-                self.history[f'{metric_key}_to_best'].append(0.0)
-                self.history[f'fitness_vs_{metric_key}'].append([])
-
-        # Get the dictionary of all valid correlations for the current generation
-        current_gen_correlations = self.get_correlations(generation, method='pearson')
-
-        # Iterate through all the metrics we are supposed to be tracking
-        # and append the result (or None if no valid correlation was computed)
-        for metric in self.metrics:
-            if metric == 'qbadic':
-                for b in self.qbadic_bases:
-                    for m in self.multipliers:
-                        # The key format must match what get_correlations() returns
-                        corr_key = f'qbadic_b{b}_mult{m}_correlation' 
-                        hist_key = corr_key
-                        
-                        # Get the value from the dict, defaulting to None
-                        corr_value = current_gen_correlations.get(corr_key, None)
-                        self.history[hist_key].append(corr_value)
-            else:
-                key_root = metric.replace('-', '')
-                corr_key = f'{key_root}_correlation'
-                hist_key = corr_key
-
-                corr_value = current_gen_correlations.get(corr_key, None)
-                self.history[hist_key].append(corr_value)
-    
-    def _compute_qbadic_diversity(self, population, b, multiplier, qbadic_norm, n_samples=100):
-        """Compute qb-adic diversity"""
-        if population.pop_size < 2:
-            raise ValueError("Population must have at least 2 networks")
-        
+        metric_pairs: List of tuples. Can be (config_dict, config_dict) or ('name1', 'name2').
+                      If None, compares the first tracked metric vs all others.
+        """
         from nn_reals.Population import Population
         
-        n_samples = min(n_samples, population.pop_size * (population.pop_size - 1) // 2)
-        distances = []
-        
-        for _ in range(n_samples):
-            idx1, idx2 = np.random.choice(population.pop_size, 2, replace=False)
-            dist = Population.genetic_distance(
-                population[idx1], population[idx2], metric='qbadic',
-                base=b, multiplier=multiplier, qbadic_norm=qbadic_norm
-            )
-            distances.append(dist)
-        
-        distances = np.array(distances)
-        return {
-            'mean_distance': np.mean(distances), 'std_distance': np.std(distances),
-            'min_distance': np.min(distances), 'max_distance': np.max(distances)
-        }
-    
-    def save(self, filename='multi_base_metrics.json'):
-        """Save metrics to JSON"""
-        save_data = {
-            'metrics_tracked': self.metrics,
-            'qbadic_bases': self.qbadic_bases if 'qbadic' in self.metrics else None,
-            'multipliers': self.multipliers if 'qbadic' in self.metrics else None,
-            'qbadic_config': self.qbadic_config or None,
-            'metrics': self.history
-        }
-        
-        with open(self.save_dir / filename, 'w') as f:
-            json.dump(save_data, f, indent=2)
-        print(f"Metrics saved to {self.save_dir / filename}")
-    
-    def get_correlations(self, generation, metric=None, base=None, multiplier=None, method='pearson'):
-        """Get correlations for a generation"""
-        # Find the index in history that corresponds to this generation
-        if generation not in self.history['generation']:
-            return None
-        
-        # Get the actual index in the history arrays
-        try:
-            gen_idx = self.history['generation'].index(generation)
-        except ValueError:
-            return None
-        
-        if gen_idx >= len(self.history['generation']):
-            return None
-        
-        def safe_corr(x, y):
-            """Safely compute correlation"""
-            if len(x) < 3 or len(set(x)) == 1 or len(set(y)) == 1:
-                return None
-            if any(np.isnan(x)) or any(np.isinf(x)) or any(np.isnan(y)) or any(np.isinf(y)):
-                return None
-            
-            try:
-                corr_funcs = {'pearson': pearsonr, 'spearman': spearmanr, 'kendall': kendalltau}
-                corr_func = corr_funcs.get(method)
-                if corr_func is None:
-                    raise ValueError(f"Unknown correlation method: {method}")
-                corr, _ = corr_func(x, y)
-                return None if np.isnan(corr) or np.isinf(corr) else corr
-            except Exception as e:
-                # Silently handle correlation computation errors
-                return None
+        # Helper to find config by name
+        def get_config(item):
+            if isinstance(item, dict): return item
+            if isinstance(item, str):
+                for c in self.tracked_configs:
+                    if c['name'] == item: return c
+                raise ValueError(f"Metric name '{item}' not found in tracked configs.")
+            raise ValueError(f"Invalid metric identifier: {item}")
+
+        # If no pairs specified, compare first metric (usually Euclidean) vs all others
+        if metric_pairs is None:
+            metric_pairs = []
+            base_config = self.tracked_configs[0] # Usually Euclidean
+            for i in range(1, len(self.tracked_configs)):
+                metric_pairs.append((base_config, self.tracked_configs[i]))
+        else:
+            # Resolve strings to configs
+            metric_pairs = [(get_config(p[0]), get_config(p[1])) for p in metric_pairs]
         
         results = {}
         
-        # Handle qbadic
-        if metric == 'qbadic' or (metric is None and 'qbadic' in self.metrics):
-            for b in ([base] if base else self.qbadic_bases):
-                for m in ([multiplier] if multiplier else self.multipliers):
-                    key = f'qbadic_b{b}_mult{m}'
-                    data = self.history[f'fitness_vs_{key}'][gen_idx]
-                    if data and len(data) >= 3:  # Need at least 3 points for meaningful correlation
-                        x, y = zip(*data)
-                        corr = safe_corr(x, y)
-                        if corr is not None:
-                            results[f'{key}_correlation'] = corr
+        # Pre-calculate distances for the sample to avoid re-sampling for each pair
+        # We need a fixed set of pairs of individuals to compare distances on
         
-        # Handle non-qbadic
-        metrics_to_check = [metric] if metric and metric != 'qbadic' else [m for m in self.metrics if m != 'qbadic']
-        for m in metrics_to_check:
-            key = m.replace('-', '')
-            data = self.history[f'fitness_vs_{key}'][gen_idx]
-            if data and len(data) >= 3:  # Need at least 3 points for meaningful correlation
-                x, y = zip(*data)
-                corr = safe_corr(x, y)
-                if corr is not None:
-                    results[f'{key}_correlation'] = corr
+        if population.pop_size < 2:
+            return {}
+            
+        max_pairs = population.pop_size * (population.pop_size - 1) // 2
+        n_samples = min(n_samples, max_pairs)
         
-        return results
-    
-    def summary_report(self):
-        """Print summary statistics"""
-        print("\n" + "="*70)
-        print("MULTI-BASE EVOLUTION METRICS SUMMARY")
-        print("="*70)
-        print(f"\nMetrics tracked: {', '.join(self.metrics)}")
+        # Generate fixed pairs of indices
+        pair_indices = []
+        for _ in range(n_samples):
+             idx1, idx2 = np.random.choice(population.pop_size, 2, replace=False)
+             pair_indices.append((idx1, idx2))
+             
+        # Cache distances for each config for these pairs
+        # {config_name: [d1, d2, ...]}
+        distance_cache = {}
         
-        if self.qbadic_config:
-            print(f"\nqb-adic configuration:")
-            print(f"  Bases: {self.qbadic_config['bases']}")
-            print(f"  Multipliers: {self.qbadic_config['multipliers']}")
-            print(f"  Norm type: {self.qbadic_config['norm']}")
-        
-        print(f"\nTotal generations: {len(self.history['generation'])}")
-        print(f"Best fitness: {min(self.history['best_fitness']):.6f}")
-        print(f"Final fitness: {self.history['best_fitness'][-1]:.6f}")
-        
-        print("\nDiversity trends:")
-        for metric in self.metrics:
-            if metric == 'qbadic':
-                for b in self.qbadic_bases:
-                    for m in self.multipliers:
-                        key = f'qbadic_b{b}_mult{m}_diversity'
-                        if self.history[key]:
-                            print(f"  qb-adic (b={b}, m={m}): Start: {self.history[key][0]:.4f}, End: {self.history[key][-1]:.4f}")
-            else:
-                key = f'{metric.replace("-", "")}_diversity'
-                if self.history[key]:
-                    print(f"  {metric.capitalize():20s} - Start: {self.history[key][0]:.4f}, End: {self.history[key][-1]:.4f}")
-        
-        # Correlations - Use actual generation numbers, not indices
-        mid_start_idx = len(self.history['generation']) // 4
-        mid_end_idx = 3 * len(self.history['generation']) // 4
-        
-        corrs = {f'qbadic_b{b}_mult{m}': [] for b in self.qbadic_bases for m in self.multipliers} if 'qbadic' in self.metrics else {}
-        corrs.update({m: [] for m in self.metrics if m != 'qbadic'})
-        
-        valid_gens = 0
-        for gen_idx in range(mid_start_idx, mid_end_idx):
-            actual_gen = self.history['generation'][gen_idx]  # Get the actual generation number!
-            c = self.get_correlations(actual_gen)
-            if c:
-                valid_gens += 1
-                for k, v in c.items():
-                    metric_name = k.replace('_correlation', '')
-                    if metric_name in corrs:
-                        corrs[metric_name].append(v)
-        
-        if any(corrs.values()):
-            print(f"\nAverage correlations (fitness diff vs distance):")
-            print(f"  Based on {valid_gens}/{mid_end_idx - mid_start_idx} valid generations")
-            for metric in self.metrics:
-                if metric == 'qbadic':
-                    for b in self.qbadic_bases:
-                        for m in self.multipliers:
-                            key = f'qbadic_b{b}_mult{m}'
-                            if corrs[key]:
-                                print(f"  qb-adic (b={b}, m={m}): {np.mean(corrs[key]):.4f} ({len(corrs[key])} samples)")
-                elif corrs[metric]:
-                    print(f"  {metric.capitalize():20s} {np.mean(corrs[metric]):.4f} ({len(corrs[metric])} samples)")
-        else:
-            print("\nNo valid correlations computed")
-        print("="*70 + "\n")
-    
-    def compare_bases_report(self):
-        """Compare different bases and multipliers"""
-        if 'qbadic' not in self.metrics:
-            print("No qb-adic metrics to compare")
-            return
-        
-        print("\n" + "="*70)
-        print("qb-adic BASE AND MULTIPLIER COMPARISON")
-        print("="*70)
-        
-        print("\nFinal diversity by (base, multiplier):")
-        for b in self.qbadic_bases:
-            print(f"\n  Base {b}:")
-            for m in self.multipliers:
-                key = f'qbadic_b{b}_mult{m}_diversity'
-                if self.history[key]:
-                    print(f"    Multiplier {m}: {self.history[key][-1]:.6f}")
-        
-        print("\nAverage correlation (mid-evolution) by (base, multiplier):")
-        # FIXED: Use actual generation numbers, not indices
-        mid_start_idx = len(self.history['generation']) // 4
-        mid_end_idx = 3 * len(self.history['generation']) // 4
-        
-        for b in self.qbadic_bases:
-            print(f"\n  Base {b}:")
-            for m in self.multipliers:
-                corrs, valid = [], 0
-                for gen_idx in range(mid_start_idx, mid_end_idx):
-                    actual_gen = self.history['generation'][gen_idx]  # Get the actual generation number!
-                    c = self.get_correlations(actual_gen, base=b, multiplier=m)
-                    key = f'qbadic_b{b}_mult{m}_correlation'
-                    if c and key in c:
-                        valid += 1
-                        corrs.append(c[key])
+        # Identify which configs we need
+        needed_configs = set()
+        for c1, c2 in metric_pairs:
+            needed_configs.add(c1['name'])
+            needed_configs.add(c2['name'])
+            
+        # Compute distances
+        for config in self.tracked_configs:
+            if config['name'] not in needed_configs:
+                continue
                 
-                if corrs:
-                    print(f"    Multiplier {m}: {np.mean(corrs):.4f} (σ={np.std(corrs):.4f}, n={valid})")
-                else:
-                    print(f"    Multiplier {m}: No valid correlations")
-        print("="*70 + "\n")
+            dists = []
+            for idx1, idx2 in pair_indices:
+                d = Population.genetic_distance(
+                    population[idx1], population[idx2],
+                    config['metric'], config['base'], config['multiplier'], config['qbadic_norm']
+                )
+                dists.append(d)
+            distance_cache[config['name']] = dists
+            
+        # Compute correlations
+        for c1, c2 in metric_pairs:
+            d1 = distance_cache[c1['name']]
+            d2 = distance_cache[c2['name']]
+            
+            if len(d1) < 2 or len(set(d1)) < 2 or len(set(d2)) < 2:
+                val = 0.0
+            elif correlation_type == 'spearman':
+                val, _ = spearmanr(d1, d2)
+            elif correlation_type == 'kendall':
+                val, _ = kendalltau(d1, d2)
+            else:
+                val, _ = pearsonr(d1, d2)
+                
+            results[f"{c1['name']} vs {c2['name']}"] = val
+            
+        return results
+
+    def save(self):
+        """Save the lightweight history to JSON."""
+        filepath = self.save_dir / 'metrics_history.json'
+        
+        # Convert all numpy floats to python floats for JSON serialization
+        def convert(obj):
+            if isinstance(obj, np.integer):
+                return int(obj)
+            elif isinstance(obj, np.floating):
+                return float(obj)
+            elif isinstance(obj, np.ndarray):
+                return obj.tolist()
+            return obj
+
+        with open(filepath, 'w') as f:
+            json.dump(self.history, f, indent=2, default=convert)
+        print(f"Metrics history saved to {filepath}")

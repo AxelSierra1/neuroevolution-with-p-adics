@@ -92,7 +92,7 @@ class Network:
             # Apply activation based on layer type
             if i < len(weights) - 1:
                 # current_input = self._sigmoid(z) # Hidden layers always use sigmoid
-                current_input = self._tanh(z) 
+                current_input = self._tanh(z)
             else: # Output layer: depends on task
                 if self.task == 'classification': # For classification: sigmoid for binary
                     current_input = self._sigmoid(z)
